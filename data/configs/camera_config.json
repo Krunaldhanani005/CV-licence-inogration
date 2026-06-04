@@ -1,0 +1,22 @@
+{
+  "active_camera": {
+    "camera_type": "rtsp",
+    "camera_name": "ALLBOTIX PTZ",
+    "rtsp_url": "rtsp://192.168.29.199:554/1",
+    "ip_address": "",
+    "username": ""
+  },
+  "rtsp_cameras": [
+    {
+      "camera_type": "rtsp",
+      "camera_name": "ALLBOTIX PTZ",
+      "rtsp_url": "rtsp://192.168.29.199:554/1",
+      "ip_address": "",
+      "port": 554,
+      "username": "",
+      "password": "",
+      "brand": "hikvision",
+      "stream_path": ""
+    }
+  ]
+}

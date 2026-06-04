@@ -1,0 +1,423 @@
+{
+  "fb3d0b44d0b144afa008ca50e2cf269a": {
+    "name": "Krunal",
+    "department": "Technical",
+    "color": "#3B82F6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg",
+      "face_004.jpg"
+    ],
+    "embedding_count": 4,
+    "created_at": "2026-06-03T10:22:57",
+    "updated_at": "2026-06-03T10:23:07"
+  },
+  "3f6ff9c0a1cb41d694615d731421e8c4": {
+    "name": "Dhananjay",
+    "department": "Robotics",
+    "color": "#8B5CF6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:19:37",
+    "updated_at": "2026-06-03T14:19:37"
+  },
+  "0f5084741cfa48209f73cd032153f479": {
+    "name": "Vaishali",
+    "department": "Accounts",
+    "color": "#68CE49",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:21:29",
+    "updated_at": "2026-06-03T14:21:30"
+  },
+  "52e9b29801fb43c7a9bb25ddcd4b4a55": {
+    "name": "Parin",
+    "department": "Accounts",
+    "color": "#68CE49",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:22:35",
+    "updated_at": "2026-06-03T14:22:35"
+  },
+  "cea410b4565146599a4476729adb158a": {
+    "name": "Naresh",
+    "department": "Accounts",
+    "color": "#68CE49",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:24:52",
+    "updated_at": "2026-06-03T14:24:52"
+  },
+  "fa72af9fd1c448ef910eb5eb1658b655": {
+    "name": "KAKA",
+    "department": "Reception",
+    "color": "#6FCE49",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:26:07",
+    "updated_at": "2026-06-03T14:26:07"
+  },
+  "cc8aa9d12bae487b912b1df6f4f43118": {
+    "name": "Mayank",
+    "department": "CEO",
+    "color": "#49CE54",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:27:05",
+    "updated_at": "2026-06-03T14:27:05"
+  },
+  "43ee3fb01db6466bb82be0eb902ac420": {
+    "name": "Manoj",
+    "department": "Sales VP",
+    "color": "#49CEB6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:28:42",
+    "updated_at": "2026-06-03T14:28:42"
+  },
+  "0e09d2b3f0264019a1d903e78f1ba687": {
+    "name": "Alkesh",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:29:03",
+    "updated_at": "2026-06-03T14:29:03"
+  },
+  "f736d459fb0b4dcf844294826951dc75": {
+    "name": "Bharat",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:30:08",
+    "updated_at": "2026-06-03T14:30:08"
+  },
+  "f65cf3ee6b324d6b85b047e39886a547": {
+    "name": "Prashant",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:30:40",
+    "updated_at": "2026-06-03T14:30:41"
+  },
+  "5958b9835d5f448dace312b1aeccac1b": {
+    "name": "Khushi",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:31:02",
+    "updated_at": "2026-06-03T14:31:02"
+  },
+  "0cec560b4eba45e99d574a055e69c554": {
+    "name": "Akshay",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:32:49",
+    "updated_at": "2026-06-03T14:32:50"
+  },
+  "d3f1fecf09774a609720703927c326b6": {
+    "name": "Shrushti",
+    "department": "Marketing",
+    "color": "#F97316",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:33:08",
+    "updated_at": "2026-06-03T14:33:08"
+  },
+  "e5c8601899f148e593029a18b2cfb699": {
+    "name": "Sendhaji",
+    "department": "Reception",
+    "color": "#6FCE49",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg",
+      "face_004.jpeg",
+      "face_005.jpeg",
+      "face_006.jpeg"
+    ],
+    "embedding_count": 6,
+    "created_at": "2026-06-03T14:34:20",
+    "updated_at": "2026-06-03T18:16:57"
+  },
+  "c4e15f653845465b86e21b709181dd78": {
+    "name": "Divya",
+    "department": "EA",
+    "color": "#CE49BA",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:35:42",
+    "updated_at": "2026-06-03T14:35:42"
+  },
+  "e953578b6f4c4ffaa9ad42a7eda5f126": {
+    "name": "Noor",
+    "department": "Robotics",
+    "color": "#8B5CF6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:36:03",
+    "updated_at": "2026-06-03T14:36:03"
+  },
+  "2026a8a2bab24ac7868948c65faf1419": {
+    "name": "Nikunj",
+    "department": "Robotics",
+    "color": "#8B5CF6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:37:01",
+    "updated_at": "2026-06-03T14:37:01"
+  },
+  "22653c0ff6854836ac2eac0464e57ecb": {
+    "name": "Himanshu",
+    "department": "Robotics",
+    "color": "#8B5CF6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:38:10",
+    "updated_at": "2026-06-03T14:38:10"
+  },
+  "0781d2968cbb4140a1ae216e71281148": {
+    "name": "Yashvi",
+    "department": "Robotics",
+    "color": "#8B5CF6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T14:38:32",
+    "updated_at": "2026-06-03T14:38:32"
+  },
+  "fe83b47c737e4b3080e6a04dc6bb3259": {
+    "name": "Om",
+    "department": "Technical",
+    "color": "#3B82F6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:13:56",
+    "updated_at": "2026-06-03T18:13:56"
+  },
+  "2ed326cc04894088959a19abd0cf47e9": {
+    "name": "Bhavisha",
+    "department": "Technical",
+    "color": "#3B82F6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:14:12",
+    "updated_at": "2026-06-03T18:14:12"
+  },
+  "7f18dfe9a4b642cd922790c6d287f4b0": {
+    "name": "Manali",
+    "department": "Technical",
+    "color": "#3B82F6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:14:39",
+    "updated_at": "2026-06-03T18:14:39"
+  },
+  "e2a26b89626e44e6a3868a4bd6b15820": {
+    "name": "Vraj",
+    "department": "Technical",
+    "color": "#3B82F6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:15:57",
+    "updated_at": "2026-06-03T18:15:58"
+  },
+  "e32b5704ca5d4534bbd4cf54217f1bd5": {
+    "name": "Janvi",
+    "department": "Technical",
+    "color": "#3B82F6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg",
+      "face_004.jpeg"
+    ],
+    "embedding_count": 4,
+    "created_at": "2026-06-03T18:16:25",
+    "updated_at": "2026-06-03T18:16:25"
+  },
+  "85765b188177491f9ae0dacc8adb378c": {
+    "name": "Kenvi",
+    "department": "Sales Manager",
+    "color": "#CE4981",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:18:59",
+    "updated_at": "2026-06-03T18:18:59"
+  },
+  "0684d98a5d624255a0d2a90daca68279": {
+    "name": "Jaimin",
+    "department": "Marketing",
+    "color": "#F97316",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:19:25",
+    "updated_at": "2026-06-03T18:19:25"
+  },
+  "7481a353273c4681a1fd30e4532eae39": {
+    "name": "Sumit",
+    "department": "Driver",
+    "color": "#C8CE49",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:20:22",
+    "updated_at": "2026-06-03T18:20:23"
+  },
+  "51e764412c294fb99fec6f61ca2ccc11": {
+    "name": "Hardik",
+    "department": "Human Resources",
+    "color": "#EC4899",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:21:45",
+    "updated_at": "2026-06-03T18:21:45"
+  },
+  "471c00a916944722b993bd84d241e7b5": {
+    "name": "Maulik",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:22:07",
+    "updated_at": "2026-06-03T18:22:08"
+  },
+  "e6e152afc7494048bda6c3c7ccba7179": {
+    "name": "Akash",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:22:38",
+    "updated_at": "2026-06-03T18:22:38"
+  },
+  "c9eb07b313174162b27a44c940cf1295": {
+    "name": "Pankaj",
+    "department": "Sales GM",
+    "color": "#49CEB6",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-03T18:24:25",
+    "updated_at": "2026-06-03T18:24:26"
+  }
+}

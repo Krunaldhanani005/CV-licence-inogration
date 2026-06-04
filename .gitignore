@@ -1,23 +1,36 @@
 # Python
-__pycache__/
-*.py[cod]
 venv/
-.env
+__pycache__/
+*.pyc
 
-# Model weights (downloaded on first run)
-models/*.pt
-models/*.onnx
-models/buffalo*/
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Face Recognition Data
+data/faces/
+data/uploads/
+data/embeddings/
+data/faiss/
+data/persons/
+
+# Images
+*.jpg
+*.jpeg
+*.png
+*.heic
+
+# Models (optional)
 *.onnx
 
-# Runtime data
-data/faces/*
-data/embeddings/*
-data/faiss/*
-data/configs/runtime.json
-data/configs/people.json
-data/configs/camera_config.json
-logs/*.log
+# Environment
+.env
 
-# Keep folder placeholders
-!**/.gitkeep
+# OS Files
+.DS_Store
+Thumbs.db

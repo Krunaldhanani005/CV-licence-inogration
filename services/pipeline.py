@@ -59,6 +59,7 @@ class TrackState:
     activity_history: Deque[str] = field(default_factory=lambda: deque(maxlen=5))
     last_seen: float = 0.0
     last_seen_frame: int = 0          # global frame index of last detection
+    gen: int = 0                      # identity-epoch token (bumped on reuse/invalidate)
 
 
 class MonitoringPipeline:
@@ -94,8 +95,9 @@ class MonitoringPipeline:
         self._recog_thread: Optional[threading.Thread] = None
         self._recog_lock = threading.Lock()
         self._recog_event = threading.Event()
-        self._recog_req = None            # (frame, {tid: box})  latest only
-        self._recog_out = None            # {tid: (match, emb)}  latest results
+        self._recog_req = None            # (frame, boxes, gens)  latest only
+        self._recog_out = None            # {tid: (match, emb, gen)}  latest results
+        self._gen_counter = 0             # monotonic identity-epoch counter
 
         # Session-based camera selection. No camera is opened until the user picks
         # one from the Live Monitoring dialog. The choice is in-memory only.
@@ -132,6 +134,8 @@ class MonitoringPipeline:
             settings.get("recognition", "revalidation_interval", 45)))
         self.max_validation_fails = max(1, int(
             settings.get("recognition", "max_validation_fails", 3)))
+        self.reverify_gap_frames = max(2, int(
+            settings.get("recognition", "reverify_gap_frames", 5)))
         self.debug_recognition = bool(settings.get("recognition", "debug", False))
 
         # Adaptive low-latency controller (degrades work, never the stream).
@@ -326,6 +330,7 @@ class MonitoringPipeline:
         self.recognizer.min_face_size = int(rcfg.get("min_face_size", 28))
         self.revalidation_interval = max(1, int(rcfg.get("revalidation_interval", 45)))
         self.max_validation_fails = max(1, int(rcfg.get("max_validation_fails", 3)))
+        self.reverify_gap_frames = max(2, int(rcfg.get("reverify_gap_frames", 5)))
         self.debug_recognition = bool(rcfg.get("debug", False))
         self._track_ttl = max(2.0, int(tcfg.get("track_buffer", 60)) / float(self.fps_limit))
 
@@ -451,6 +456,19 @@ class MonitoringPipeline:
     def _eff_jpeg(self) -> int:
         return max(50, self.jpeg_quality - self._adapt_level * 10)
 
+    def _eff_recognition_interval(self) -> int:
+        """Person-count-aware: recognise less often in crowds (lean on tracking).
+
+        Identity stays stable via track persistence, so spacing out the scans with
+        many people keeps the recognition worker (and CPU) comfortable.
+        """
+        n = sum(1 for s in self._tracks.values() if s.confirmed)
+        if n >= 7:
+            return self.recognition_interval * 2
+        if n >= 4:
+            return int(self.recognition_interval * 1.5)
+        return self.recognition_interval
+
     def _process_frame(self, frame: np.ndarray) -> None:
         height, width = frame.shape[:2]
         run_detect = (self._frame_idx % self._eff_detect_every() == 0)
@@ -460,7 +478,7 @@ class MonitoringPipeline:
             self._sync_tracks(detections, frame, width, height)
             # Face recognition: hand the newest frame + confirmed boxes to the
             # recognition worker (async) so it never blocks the stream.
-            if self._frame_idx % self.recognition_interval == 0:
+            if self._frame_idx % self._eff_recognition_interval() == 0:
                 self._submit_recognition(frame)
 
         # Apply any recognition results produced by the worker thread.
@@ -478,17 +496,20 @@ class MonitoringPipeline:
         return {tid: st.box for tid, st in self._tracks.items() if st.confirmed}
 
     def _submit_recognition(self, frame: np.ndarray) -> None:
-        boxes = self._confirmed_boxes()
+        boxes, gens = {}, {}
+        for tid, st in self._tracks.items():
+            if st.confirmed:
+                boxes[tid] = st.box
+                gens[tid] = st.gen
         if not boxes:
             return
         if self.async_recognition:
             with self._recog_lock:
-                self._recog_req = (frame, boxes)     # latest only — drop older
+                self._recog_req = (frame, boxes, gens)   # latest only — drop older
             self._recog_event.set()
         else:
             # Synchronous fallback (no worker thread).
-            out = self._recognize_faces(frame, boxes)
-            self._apply_outcomes(out)
+            self._apply_outcomes(self._recognize_faces(frame, boxes, gens))
 
     def _apply_recognition_results(self) -> None:
         with self._recog_lock:
@@ -498,10 +519,14 @@ class MonitoringPipeline:
             self._apply_outcomes(out)
 
     def _apply_outcomes(self, out: dict) -> None:
-        for tid, (match, emb) in out.items():
+        for tid, (match, emb, gen) in out.items():
             st = self._tracks.get(tid)
-            if st is not None:
-                self._verify_track(st, match, emb)
+            # Drop stale results: if the track's identity epoch changed since the
+            # worker started (id reuse / invalidation / recreate), the result was
+            # computed for a DIFFERENT person -> never apply it.
+            if st is None or st.gen != gen:
+                continue
+            self._verify_track(st, match, emb)
 
     def _recognition_loop(self) -> None:
         """Dedicated thread: detect faces + embed + match, never blocks the stream."""
@@ -514,9 +539,9 @@ class MonitoringPipeline:
                 self._recog_req = None
             if req is None:
                 continue
-            frame, boxes = req
+            frame, boxes, gens = req
             try:
-                out = self._recognize_faces(frame, boxes)
+                out = self._recognize_faces(frame, boxes, gens)
             except Exception as exc:  # noqa: BLE001 - worker must survive
                 logger.exception("Recognition worker error: %s", exc)
                 continue
@@ -555,15 +580,21 @@ class MonitoringPipeline:
             if state is None:
                 state = TrackState(track_id=tid)
                 state.activity_history = deque(maxlen=self.activity_window)
+                state.gen = self._next_gen()
                 self._tracks[tid] = state
                 if self.debug_recognition:
                     logger.info("[ID] track CREATED id=%d -> Guest (awaiting verification)", tid)
             else:
-                # Possible ByteTrack swap: abrupt box jump/shrink => force re-verify.
-                if state.is_known and self._is_abrupt_change(state.box, box):
-                    state.force_reverify = True
-                    if self.debug_recognition:
-                        logger.info("[ID] track id=%d abrupt box change -> re-verify queued", tid)
+                # Detect track-ID REUSE / swap. ByteTrack can hand a lost id to a
+                # newcomer, or swap ids when two people cross. In either case the
+                # bound identity must NOT carry over to a different body:
+                #   * gap  -> the track was lost then re-associated (re-entry)
+                #   * abrupt box jump/resize -> likely a different person now
+                gap = self._frame_idx - state.last_seen_frame
+                if state.recognized and (gap > self.reverify_gap_frames
+                                         or self._is_abrupt_change(state.box, box)):
+                    reason = "re-entry/gap" if gap > self.reverify_gap_frames else "abrupt-change"
+                    self._invalidate_identity(state, reason)
             state.box = box
             state.last_seen = now
             state.last_seen_frame = self._frame_idx
@@ -608,9 +639,10 @@ class MonitoringPipeline:
 
     # --------------------------------------------- frame-level face recognition
     def _recognize_faces(self, frame: np.ndarray,
-                         boxes: Dict[int, Tuple[int, int, int, int]]) -> dict:
+                         boxes: Dict[int, Tuple[int, int, int, int]],
+                         gens: Dict[int, int]) -> dict:
         """Detect faces on the WHOLE frame, quality-gate them, assign each to ONE
-        track, match embeddings. Returns ``{track_id: (match, emb)}``.
+        track, match embeddings. Returns ``{track_id: (match, emb, gen)}``.
 
         Runs on the recognition worker thread. Detecting on the full frame plus a
         unique one-face-per-track assignment prevents a neighbour's face leaking
@@ -633,7 +665,9 @@ class MonitoringPipeline:
         assignments = self._assign_faces_to_tracks(faces, boxes)
         out = {}
         for tid, face in assignments.items():
-            out[tid] = (self.recognizer.match_embedding(face["emb"]), face["emb"])
+            # Carry the identity-epoch token so a delayed result is dropped if the
+            # track has since changed person (id reuse / invalidation).
+            out[tid] = (self.recognizer.match_embedding(face["emb"]), face["emb"], gens[tid])
         return out
 
     def _face_quality_ok(self, frame: np.ndarray, face, box) -> bool:
@@ -749,6 +783,29 @@ class MonitoringPipeline:
                         state.track_id, match["name"], match["department"],
                         match["score"], self._frame_idx)
 
+    def _invalidate_identity(self, state: TrackState, reason: str) -> None:
+        """Clear a track's bound identity (track-id reuse / swap / re-entry).
+
+        The newcomer must earn a name through fresh face verification — the old
+        identity can never carry over to a different person.
+        """
+        if state.recognized and self.debug_recognition:
+            logger.info("[ID] track id=%d identity INVALIDATED (%s): %s -> Guest, re-verify",
+                        state.track_id, reason, state.name)
+        state.name = self.recognizer.guest_label
+        state.department = ""
+        state.color = ""
+        state.is_known = False
+        state.recognized = False
+        state.identity_emb = None
+        state.verify_fail = 0
+        state.force_reverify = True
+        state.gen = self._next_gen()       # new identity epoch -> stale results dropped
+
+    def _next_gen(self) -> int:
+        self._gen_counter += 1
+        return self._gen_counter
+
     def _downgrade_to_guest(self, state: TrackState) -> None:
         if self.debug_recognition:
             logger.info("[ID] track id=%d DOWNGRADED %s -> Guest (failed re-validation)",
@@ -837,9 +894,16 @@ class MonitoringPipeline:
         top = max(0, y1 - box_h)
         accent = max(4, int(6 * scale))
 
-        overlay = img.copy()
-        cv2.rectangle(overlay, (x1, top), (x1 + box_w, y1), (18, 18, 22), -1)
-        cv2.addWeighted(overlay, 0.62, img, 0.38, 0, img)
+        # Translucent label background — blend ONLY the small label rectangle, not
+        # the whole frame. This keeps per-person cost tiny so many people stay smooth.
+        ih, iw = img.shape[:2]
+        rx1, ry1 = max(0, x1), max(0, top)
+        rx2, ry2 = min(iw, x1 + box_w), min(ih, y1)
+        if rx2 > rx1 and ry2 > ry1:
+            roi = img[ry1:ry2, rx1:rx2]
+            dark = np.empty_like(roi)
+            dark[:] = (18, 18, 22)
+            cv2.addWeighted(dark, 0.62, roi, 0.38, 0, roi)
         cv2.rectangle(img, (x1, top), (x1 + accent, y1), color, -1)  # dept accent bar
 
         cy = top + pad

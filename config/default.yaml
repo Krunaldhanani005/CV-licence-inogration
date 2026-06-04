@@ -77,6 +77,9 @@ recognition:
   cache_seconds: 60            # reuse a track's identity for this long (smart cache)
   revalidation_interval: 45    # re-verify a recognised track every N frames
   max_validation_fails: 3      # consecutive failed re-checks before downgrade to Guest
+  reverify_gap_frames: 4       # if a recognised track is lost this many frames then
+                               # reappears, treat it as a possible NEW person ->
+                               # clear identity + re-verify (prevents id-reuse transfer)
   debug: false                 # verbose per-track identity logging
   # ---- face quality gate (prefer "Guest" over a wrong identity) ----
   # Permissive enough to ATTEMPT far faces; the recognition threshold above is
@@ -94,7 +97,8 @@ pipeline:
   stream_resolution: "1280x720"  # display/processing resolution (clarity). The
                                  # camera is opened at this size; detector imgsz
                                  # stays small for CPU speed.
-  detect_every_n_frames: 2       # frame skipping for detection (Frame Skip Value)
+  detect_every_n_frames: 1       # tracker updates EVERY frame -> boxes stay tight
+                                 # to moving people (adaptive mode raises it on load)
   pose_every_n_frames: 10        # activity re-evaluation cadence (CPU friendly)
   fps_limit: 15                  # max output FPS — smooth 10-15 preferred over laggy 20+
   max_capture_queue: 2           # always process newest frame; discard backlog
@@ -105,7 +109,7 @@ pipeline:
   activity_smooth_window: 5      # majority vote window -> stable labels
   jpeg_quality: 70
   draw_fps: false      # FPS is shown in the dashboard UI, keep the stream clean
-  box_smooth_alpha: 0.5  # EMA factor for smooth bounding-box movement (0..1)
+  box_smooth_alpha: 0.8  # EMA factor — high = box snaps to person (low lag), still smooth
   async_recognition: true  # run face recognition on its own thread (no stream stutter)
   # ---- adaptive low-latency mode ----
   adaptive_enabled: true         # auto-degrade under CPU pressure (never the stream)
