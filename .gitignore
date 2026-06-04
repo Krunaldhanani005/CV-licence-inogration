@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# Model weights (downloaded on first run)
+models/*.pt
+models/*.onnx
+models/buffalo*/
+*.onnx
+
+# Runtime data
+data/faces/*
+data/embeddings/*
+data/faiss/*
+data/configs/runtime.json
+data/configs/people.json
+data/configs/camera_config.json
+logs/*.log
+
+# Keep folder placeholders
+!**/.gitkeep

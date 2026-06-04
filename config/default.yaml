@@ -1,0 +1,98 @@
+# ============================================================
+# AI Reception Monitoring System - default configuration
+# All values can be overridden at runtime from the Admin Panel.
+# ============================================================
+
+app:
+  host: "0.0.0.0"
+  port: 5000
+  debug: false
+  secret_key: "change-me-in-production"
+
+paths:
+  data_dir: "data"
+  faces_dir: "data/faces"
+  embeddings_dir: "data/embeddings"
+  faiss_dir: "data/faiss"
+  configs_dir: "data/configs"
+  models_dir: "models"
+  logs_dir: "logs"
+
+camera:
+  # Source selection: "usb" (default) or "rtsp". ("webcam" and "file" are also
+  # supported by CameraManager for future use.)
+  camera_type: "usb"
+
+  # --- USB camera settings ---
+  camera_index: 0
+  width: 1280       # default capture resolution (overridden by stream_resolution)
+  height: 720
+  fps: 30
+
+  # --- RTSP / IP camera settings ---
+  camera_name: "Reception Camera"
+  rtsp_url: ""          # full RTSP url; if empty it is built from ip/credentials
+  ip_address: ""
+  username: ""
+  password: ""
+  channel: 1
+
+  # --- optional: video file source (camera_type: "file") ---
+  file_path: ""
+
+  # --- common ---
+  reconnect_delay_sec: 3.0
+
+detection:
+  model_path: "yolov8n.pt"
+  person_class_id: 0
+  confidence: 0.45
+  iou: 0.50
+  imgsz: 640          # YOLO input size (kept at 640 for CPU speed; the *display*
+                      # resolution is pipeline.stream_resolution, set separately)
+  device: "cpu"
+
+tracking:
+  tracker: "bytetrack.yaml"
+  track_high_thresh: 0.5
+  track_low_thresh: 0.1
+  new_track_thresh: 0.6
+  track_buffer: 15         # reception: drop lost tracks fast (no ghost boxes)
+  match_thresh: 0.8
+
+recognition:
+  model_name: "buffalo_sc"     # lightweight CPU-friendly InsightFace pack
+  det_size: 640
+  threshold: 0.45              # cosine similarity threshold for a known match
+  min_face_size: 28            # ignore faces smaller than this (pixels) — lower
+                               # so far PTZ/IP-camera faces still get recognised
+  guest_label: "Guest"
+  recognize_max_attempts: 3    # (kept) tracks never lock as Guest; they keep retrying
+  recognition_interval: 15     # re-attempt recognition every N frames per track
+  cache_seconds: 60            # reuse a track's identity for this long (smart cache)
+
+pose:
+  model_complexity: 0          # 0 = fastest, CPU friendly
+  min_detection_confidence: 0.5
+  min_tracking_confidence: 0.5
+  enabled: true
+
+pipeline:
+  stream_resolution: "1280x720"  # display/processing resolution (clarity). The
+                                 # camera is opened at this size; detector imgsz
+                                 # stays small for CPU speed.
+  detect_every_n_frames: 2       # frame skipping for detection (Frame Skip Value)
+  pose_every_n_frames: 10        # activity re-evaluation cadence (CPU friendly)
+  fps_limit: 15                  # max output FPS — smooth 10-15 preferred over laggy 20+
+  max_capture_queue: 2           # always process newest frame; discard backlog
+  max_missed_frames: 10          # remove a track if unseen this many frames (no ghosts)
+  # ---- activity (motion-based: Standing / Walking / Idle) ----
+  walk_motion_threshold: 0.018   # normalised centroid speed above which = Walking
+  idle_motion_threshold: 0.005   # below this for a while = Idle
+  activity_smooth_window: 5      # majority vote window -> stable labels
+  jpeg_quality: 70
+  draw_fps: false      # FPS is shown in the dashboard UI, keep the stream clean
+  # ---- adaptive low-latency mode ----
+  adaptive_enabled: true         # auto-degrade under CPU pressure (never the stream)
+  cpu_high_threshold: 80         # % CPU that triggers degradation
+  cpu_low_threshold: 60          # % CPU to recover

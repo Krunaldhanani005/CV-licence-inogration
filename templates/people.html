@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Person Management{% endblock %}
+{% block heading %}Person Management{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;gap:12px;flex-wrap:wrap;">
+  <p class="help" style="margin:0;">Enroll employees with their department. Embeddings + FAISS index update automatically on save.</p>
+  <div style="display:flex;gap:10px;">
+    <button class="btn ghost" id="clearAllBtn">Clear All</button>
+    <button class="btn green" id="addBtn">+ Add Person</button>
+  </div>
+</div>
+
+<div class="card" style="padding:0;overflow:hidden;">
+  <table class="people-table">
+    <thead>
+      <tr><th>Name</th><th>Department</th><th>Photos</th><th>Embeddings</th><th style="text-align:right;">Actions</th></tr>
+    </thead>
+    <tbody id="peopleBody"></tbody>
+  </table>
+  <div id="emptyState" class="empty" style="display:none;">No people enrolled yet. Click “Add Person”.</div>
+</div>
+
+<!-- Modal -->
+<div class="modal-backdrop" id="modal">
+  <div class="modal">
+    <h3 id="modalTitle">Add Person</h3>
+    <form id="personForm">
+      <input type="hidden" name="person_id" />
+      <div class="form-grid">
+        <div class="field"><label>Name</label>
+          <input name="name" placeholder="e.g. Krunal Dhanani" required /></div>
+        <div class="field"><label>Department</label>
+          <select name="department" id="deptSelect"></select></div>
+      </div>
+      <div class="field" id="customWrap" style="display:none;margin-top:14px;">
+        <label>Custom Department</label>
+        <input name="custom_department" id="customDept" placeholder="e.g. Research Team" />
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label>Face Photos <span class="help">(you can select multiple)</span></label>
+        <div class="drop" id="drop">Click or drag images here</div>
+        <input type="file" name="photos" id="photos" accept="image/*" multiple hidden />
+      </div>
+      <div id="existingThumbs" class="thumbs"></div>
+      <div id="newThumbs" class="thumbs"></div>
+      <div class="btn-row">
+        <button type="submit" class="btn green" id="saveBtn">Save</button>
+        <button type="button" class="btn ghost" id="cancelBtn">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/people.js') }}"></script>
+{% endblock %}

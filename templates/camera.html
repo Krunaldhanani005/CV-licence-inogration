@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Camera Settings{% endblock %}
+{% block heading %}Camera Management{% endblock %}
+{% block content %}
+<div class="cam-mgmt">
+  <!-- ============ LEFT: available cameras ============ -->
+  <div class="card">
+    <div class="cam-head" style="margin-bottom:14px;">
+      <div class="cam-icon">🎥</div>
+      <div>
+        <div class="section-title" style="margin:0;">Available Cameras</div>
+        <div class="help">Auto-detected on this machine</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;">
+        <button class="btn ghost" id="addRtspBtn">+ Add IP Camera</button>
+        <button class="btn secondary" id="rescanBtn">↻ Rescan</button>
+      </div>
+    </div>
+
+    <div id="cameraGrid" class="grid camera-grid">
+      <div class="cam-loading"><span class="spinner"></span> Scanning cameras…</div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: preview + active ============ -->
+  <div style="display:flex;flex-direction:column;gap:18px;">
+    <div class="card">
+      <div class="section-title">Camera Preview <span class="help">(test only · max 400×250 · no detection)</span></div>
+      <div class="snap-wrap" id="snapWrap">
+        <div class="video-badge">
+          <span class="status-dot off" id="prevDot"></span><span id="prevConn">No preview</span>
+        </div>
+        <img id="snapPreview" alt="snapshot" style="display:none;" />
+        <div id="prevEmpty" class="empty" style="padding:0;">
+          Click <b>Preview</b> on a camera to test it.
+        </div>
+      </div>
+      <div class="preview-info">
+        <div><span class="label">Camera</span><b id="prevName">—</b></div>
+        <div><span class="label">Resolution</span><b id="prevRes">—</b></div>
+        <div><span class="label">Status</span><b id="prevStatus">—</b></div>
+      </div>
+      <div class="help" style="margin-top:10px;">
+        Live detection runs on the <a href="/">Dashboard</a>. Selecting a camera here
+        just saves it as the active camera.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">Active Camera</div>
+      <div id="activeBox" class="active-box none">
+        <span class="status-dot off" id="activeDot"></span>
+        <div>
+          <div style="font-weight:600;" id="activeName">No active camera</div>
+          <div class="help" id="activeSub">Select a camera to begin detection</div>
+        </div>
+      </div>
+      <div class="help" style="margin-top:12px;">
+        The Live Monitoring page uses this camera automatically — no popup, no per-refresh selection.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Add IP Camera modal ============ -->
+<div class="modal-backdrop" id="rtspModal">
+  <div class="modal">
+    <h3>Add IP / RTSP Camera</h3>
+    <p class="help" style="margin-top:-8px;">Enter your IP camera details — the RTSP URL is built automatically, or paste a full URL.</p>
+
+    <div class="seg" id="modeSeg" style="margin-bottom:14px;">
+      <label class="seg-opt active"><input type="radio" name="ipmode" value="build" checked /><span>🔧 Build from IP</span></label>
+      <label class="seg-opt"><input type="radio" name="ipmode" value="url" /><span>🔗 Full RTSP URL</span></label>
+    </div>
+
+    <div class="field" style="margin-bottom:12px;"><label>Camera Name</label>
+      <input id="rName" placeholder="Reception PTZ Camera" /></div>
+
+    <!-- Build-from-IP fields -->
+    <div id="ipBuild">
+      <div class="form-grid">
+        <div class="field"><label>IP Address</label><input id="rIp" placeholder="192.168.1.100" /></div>
+        <div class="field"><label>Port</label><input id="rPort" type="number" min="1" value="554" /></div>
+        <div class="field"><label>Username</label><input id="rUser" placeholder="admin" autocomplete="off" /></div>
+        <div class="field"><label>Password</label><input id="rPass" type="password" autocomplete="off" /></div>
+        <div class="field"><label>Camera Brand</label>
+          <select id="rBrand">
+            <option value="hikvision">Hikvision</option>
+            <option value="dahua">Dahua / Amcrest</option>
+            <option value="reolink">Reolink</option>
+            <option value="axis">Axis</option>
+            <option value="onvif">Generic ONVIF</option>
+            <option value="generic">Generic</option>
+            <option value="custom">Custom path…</option>
+          </select>
+        </div>
+        <div class="field"><label>Channel</label><input id="rChannel" type="number" min="1" value="1" /></div>
+        <div class="field full" id="pathWrap" style="display:none;"><label>Stream Path</label>
+          <input id="rPath" placeholder="/Streaming/Channels/101" /></div>
+      </div>
+    </div>
+
+    <!-- Full URL field -->
+    <div id="ipUrl" style="display:none;">
+      <div class="field full"><label>RTSP URL</label>
+        <input id="rUrl" placeholder="rtsp://admin:pass@192.168.1.100:554/Streaming/Channels/101" /></div>
+    </div>
+
+    <div class="field full" style="margin-top:12px;">
+      <label>Resolved RTSP URL</label>
+      <input id="rResolved" readonly style="color:var(--muted);font-family:monospace;font-size:12.5px;" />
+    </div>
+
+    <div class="preview-frame" id="rtspPrevWrap" style="display:none;margin-top:12px;max-width:400px;">
+      <img id="rtspPrevImg" alt="ip camera preview" />
+    </div>
+    <div id="rtspMsg" class="test-banner" style="display:none;margin-top:12px;"></div>
+    <div class="btn-row" style="justify-content:space-between;">
+      <button class="btn ghost" id="rtspCancel">Cancel</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn secondary" id="rtspTest">Test Connection</button>
+        <button class="btn green" id="rtspSave" disabled>Save Camera</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/camera.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}System Settings{% endblock %}
+{% block heading %}System Settings{% endblock %}
+{% block content %}
+<form id="settingsForm" style="display:grid;gap:18px;max-width:900px;">
+  <div class="card">
+    <div class="section-title">Detection Settings</div>
+    <p class="help" style="margin-top:-6px;">Primary CPU/performance controls. Saving applies instantly to the running pipeline.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label>Detection Resolution <span class="help">(stream / display)</span></label>
+        <select data-sec="pipeline" name="stream_resolution">
+          <option value="640x480">640×480 — fastest (low CPU)</option>
+          <option value="1280x720">1280×720 — recommended</option>
+          <option value="1920x1080">1920×1080 — sharpest (high CPU)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Detection FPS Limit</label>
+        <input data-sec="pipeline" name="fps_limit" type="number" min="1" max="60" />
+        <span class="help">Caps processing rate — the biggest CPU lever.</span>
+      </div>
+      <div class="field">
+        <label>Face Recognition Threshold <span class="help">(0–1)</span></label>
+        <input data-sec="recognition" name="threshold" type="number" step="0.01" min="0" max="1" />
+      </div>
+      <div class="field">
+        <label>Recognition Interval <span class="help">(every N frames)</span></label>
+        <input data-sec="recognition" name="recognition_interval" type="number" min="1" />
+      </div>
+      <div class="field">
+        <label>Frame Skip Value <span class="help">(detect every N frames)</span></label>
+        <input data-sec="pipeline" name="detect_every_n_frames" type="number" min="1" />
+      </div>
+      <div class="field">
+        <label>Detection Confidence</label>
+        <input data-sec="detection" name="confidence" type="number" step="0.05" min="0" max="1" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Advanced</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Pose Every N Frames</label>
+        <input data-sec="pipeline" name="pose_every_n_frames" type="number" min="1" />
+      </div>
+      <div class="field">
+        <label>JPEG Quality (1–100)</label>
+        <input data-sec="pipeline" name="jpeg_quality" type="number" min="1" max="100" />
+      </div>
+      <div class="field">
+        <label>Min Face Size (px)</label>
+        <input data-sec="recognition" name="min_face_size" type="number" min="10" />
+      </div>
+      <div class="field">
+        <label>Recognize Attempts Before Guest</label>
+        <input data-sec="recognition" name="recognize_max_attempts" type="number" min="1" />
+      </div>
+      <div class="field">
+        <label>Track Buffer (frames)</label>
+        <input data-sec="tracking" name="track_buffer" type="number" min="5" />
+      </div>
+      <div class="field">
+        <label>Detector Input Size <span class="help">(imgsz, CPU cost)</span></label>
+        <select data-sec="detection" name="imgsz">
+          <option value="480">480 — fastest</option>
+          <option value="640">640 — balanced</option>
+          <option value="960">960 — accurate</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Recognition Cache (seconds)</label>
+        <input data-sec="recognition" name="cache_seconds" type="number" min="5" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Pose / Activity</div>
+    <div class="form-grid">
+      <div class="field">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+          <input data-sec="pose" name="enabled" type="checkbox" style="width:auto;" />
+          Enable posture / activity detection
+        </label>
+      </div>
+      <div class="field">
+        <label>Model Complexity (0=fastest)</label>
+        <select data-sec="pose" name="model_complexity">
+          <option value="0">0 — fastest (CPU)</option>
+          <option value="1">1 — balanced</option>
+          <option value="2">2 — accurate</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button type="submit" class="btn green">Save &amp; Apply</button>
+    <span class="help">Saving restarts the pipeline to apply the new settings.</span>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+const form = document.getElementById("settingsForm");
+function fields() { return [...form.querySelectorAll("[data-sec]")]; }
+async function load() {
+  const r = await API.get("/api/settings"); const data = r.data || {};
+  fields().forEach(el => {
+    const sec = el.dataset.sec, key = el.name;
+    const v = (data[sec] || {})[key];
+    if (v === undefined) return;
+    if (el.type === "checkbox") el.checked = !!v;
+    else el.value = v;
+  });
+}
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const payload = {};
+  fields().forEach(el => {
+    const sec = el.dataset.sec, key = el.name;
+    payload[sec] = payload[sec] || {};
+    payload[sec][key] = el.type === "checkbox" ? el.checked : el.value;
+  });
+  const r = await API.post("/api/settings", payload);
+  toast(r.message || (r.success ? "Saved" : "Error"), r.success ? "ok" : "err");
+};
+load();
+</script>
+{% endblock %}

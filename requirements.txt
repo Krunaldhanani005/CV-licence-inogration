@@ -1,0 +1,35 @@
+# ===== AI Reception Monitoring System - Python dependencies =====
+# Works on Python 3.10 / 3.11 / 3.12 (CPU-only)
+
+# Build backend (needed on Python 3.12 where setuptools/pkg_resources
+# is no longer bundled with venvs by default)
+setuptools>=70.0.0
+wheel>=0.43.0
+Cython>=3.0.0
+
+# Web framework
+Flask==3.0.3
+Werkzeug==3.0.3
+
+# Computer vision
+opencv-python==4.10.0.84
+numpy==1.26.4
+Pillow==10.3.0
+
+# Person detection + ByteTrack tracking
+ultralytics==8.2.103
+lapx>=0.5.11         # ByteTrack assignment; prebuilt wheels for Py3.10-3.12
+                     # (replaces the legacy `lap` which fails to build on 3.12)
+
+# Face detection + recognition
+insightface==0.7.3
+onnxruntime==1.18.1   # CPU inference backend for InsightFace
+
+# Vector similarity search
+faiss-cpu==1.8.0
+
+# Pose / activity estimation
+mediapipe==0.10.14
+
+# Utilities
+PyYAML==6.0.1

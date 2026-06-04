@@ -1,0 +1,9 @@
+# ByteTrack tracker configuration (Ultralytics format).
+# Tuned for CPU reception monitoring — stable IDs, modest re-id buffer.
+tracker_type: bytetrack
+track_high_thresh: 0.5    # first association confidence threshold
+track_low_thresh: 0.1     # second association confidence threshold
+new_track_thresh: 0.6     # confidence to spawn a new track
+track_buffer: 15          # reception: drop lost tracks quickly (no ghost boxes)
+match_thresh: 0.8         # IoU matching threshold
+fuse_score: true

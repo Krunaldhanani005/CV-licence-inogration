@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block heading %}Dashboard{% endblock %}
+{% block content %}
+<div class="dash">
+  <!-- ============ control bar ============ -->
+  <div class="dash-bar">
+    <div>
+      <div class="dash-title">AI Reception Monitoring</div>
+      <div class="help">Real-time person detection, face recognition &amp; activity</div>
+    </div>
+    <div class="dash-actions">
+      <button id="toggleBtn" class="btn green toggle-btn">
+        <span class="t-ico">▶</span><span id="toggleLabel">Start Detection</span>
+      </button>
+      <button id="receptionBtn" class="btn secondary">🖥 Reception Mode</button>
+    </div>
+  </div>
+
+  <!-- ============ main grid: stream + side panel ============ -->
+  <div class="dash-grid">
+    <!-- live stream -->
+    <div class="card stream-card">
+      <div class="stream-head">
+        <div class="stream-cam">
+          <span class="cam-glyph">📷</span>
+          <div>
+            <div class="sh-name" id="streamCam">No camera selected</div>
+            <div class="sh-sub" id="streamSub">Configure in Camera Settings</div>
+          </div>
+        </div>
+        <div class="stream-live" id="liveBadge">
+          <span class="status-dot off" id="liveDot"></span>
+          <span id="liveStatus">Stopped</span>
+        </div>
+      </div>
+
+      <div class="video-wrap" id="videoWrap">
+        <img id="feed" src="/api/video_feed" alt="Live detection stream" />
+
+        <!-- HTML overlay for non-running states (clean, no baked-in text) -->
+        <div class="stream-overlay" id="streamOverlay">
+          <div class="ov-icon" id="ovIcon">⏻</div>
+          <div class="ov-title" id="ovTitle">Detection Stopped</div>
+          <div class="ov-sub" id="ovSub">Press start to begin live monitoring</div>
+          <button class="btn green ov-start" id="ovStart">▶ Start Detection</button>
+        </div>
+
+        <!-- analytics strip (reception / fullscreen) -->
+        <div class="analytics-strip">
+          <div><span class="s-label">People</span><span class="s-val" id="sPeople">0</span></div>
+          <div><span class="s-label">Recognized</span><span class="s-val" id="sRec">0</span></div>
+          <div><span class="s-label">Guests</span><span class="s-val" id="sGuest">0</span></div>
+          <div><span class="s-label">FPS</span><span class="s-val" id="sFps">0.0</span></div>
+          <div><span class="s-label">Camera</span><span class="s-val" id="sCam">—</span></div>
+        </div>
+
+        <button id="fsBtn" class="fs-btn" title="Fullscreen" aria-label="Toggle fullscreen">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M16 3h3a2 2 0 0 1 2 2v3" />
+            <path d="M8 21H5a2 2 0 0 1-2-2v-3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- side panel: KPI tiles + system status -->
+    <aside class="dash-side">
+      <div class="kpi-grid">
+        <div class="kpi blue">
+          <div class="kpi-ico">☺</div>
+          <div class="kpi-val" id="cPeople">0</div>
+          <div class="kpi-lab">People</div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-ico">✓</div>
+          <div class="kpi-val" id="cRecognized">0</div>
+          <div class="kpi-lab">Recognized</div>
+        </div>
+        <div class="kpi amber">
+          <div class="kpi-ico">?</div>
+          <div class="kpi-val" id="cGuests">0</div>
+          <div class="kpi-lab">Guests</div>
+        </div>
+        <div class="kpi violet">
+          <div class="kpi-ico">⚡</div>
+          <div class="kpi-val" id="cFps">0.0</div>
+          <div class="kpi-lab">FPS</div>
+        </div>
+      </div>
+
+      <div class="card status-card">
+        <div class="section-title">System Status</div>
+        <div class="status-row">
+          <span class="label">Camera</span>
+          <span class="badge bad" id="cCam">Stopped</span>
+        </div>
+        <div class="status-row"><span class="label">Detector</span><span class="badge ok">YOLOv8n</span></div>
+        <div class="status-row"><span class="label">Recognition</span><span class="badge ok">InsightFace + FAISS</span></div>
+        <div class="status-row"><span class="label">Tracking</span><span class="badge ok">ByteTrack</span></div>
+        <div class="status-row"><span class="label">Activity</span><span class="badge ok">MediaPipe Pose</span></div>
+        <div class="status-row"><span class="label">Enrolled People</span><span id="cEnrolled">—</span></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Department Statistics</div>
+        <div class="dept-stats" id="deptStats">
+          <div class="help">No employees enrolled yet.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<button id="exitReceptionBtn" class="exit-reception">✕ Exit Reception Mode</button>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

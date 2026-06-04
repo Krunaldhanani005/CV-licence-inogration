@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Reception Monitor{% endblock %} · AI Reception</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <div>
+          <div class="brand-title">AI Reception</div>
+          <div class="brand-sub">Monitoring System</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <a href="/" class="nav-item {{ 'active' if active=='dashboard' }}">
+          <span class="ico">▦</span> Dashboard</a>
+        <a href="/camera" class="nav-item {{ 'active' if active=='camera' }}">
+          <span class="ico">⊞</span> Camera Settings</a>
+        <a href="/people" class="nav-item {{ 'active' if active=='people' }}">
+          <span class="ico">☺</span> Person Management</a>
+        <a href="/settings" class="nav-item {{ 'active' if active=='settings' }}">
+          <span class="ico">⚙</span> System Settings</a>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="globalCamDot" class="status-dot off"></span>
+        <span id="globalCamStatus">Camera offline</span>
+      </div>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <h1>{% block heading %}{% endblock %}</h1>
+        <div class="topbar-right">
+          <span class="pill"><span id="fpsPill">0.0</span> FPS</span>
+          <span class="pill" id="clock">--:--</span>
+        </div>
+      </header>
+      <section class="page">
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
