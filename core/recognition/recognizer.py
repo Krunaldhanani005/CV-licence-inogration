@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -42,6 +43,7 @@ class FaceRecognizer:
         self.threshold = float(cfg.get("threshold", 0.45))
         self.min_face_size = int(cfg.get("min_face_size", 30))
         self.guest_label = cfg.get("guest_label", "Guest")
+        self._infer_lock = threading.Lock()
 
         self.db = FaceDatabase(
             faces_dir=settings.path("faces_dir"),
@@ -69,10 +71,15 @@ class FaceRecognizer:
 
     # -------------------------------------------------------------- detect
     def detect_faces(self, image: np.ndarray):
-        """Return raw InsightFace face objects for an image."""
+        """Return raw InsightFace face objects for an image (thread-safe).
+
+        The recognition worker thread and the enrollment (Flask) thread can both
+        call this; a lock serialises model inference to avoid races.
+        """
         if self._app is None:
             return []
-        return self._app.get(image)
+        with self._infer_lock:
+            return self._app.get(image)
 
     def _largest_embedding(self, image: np.ndarray) -> Optional[np.ndarray]:
         faces = self.detect_faces(image)

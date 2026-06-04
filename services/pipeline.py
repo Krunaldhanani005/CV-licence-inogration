@@ -28,7 +28,7 @@ from core.detection import Detection, PersonDetector
 from core.pose import PoseEstimator
 from core.recognition import FaceRecognizer
 from core.tracking import PersonTracker
-from core.utils import clamp_box, get_logger
+from core.utils import clamp_box, get_logger, iou
 
 logger = get_logger(__name__)
 
@@ -43,11 +43,18 @@ class TrackState:
     color: str = ""                   # hex department colour (or guest colour)
     is_known: bool = False
     score: float = 0.0
-    recognized: bool = False          # name locked (known or exhausted attempts)
+    recognized: bool = False          # a name is currently bound to this track
     recognized_at: float = 0.0        # timestamp of recognition (smart cache)
+    identity_emb: Optional[np.ndarray] = None   # embedding that matched (for swap checks)
+    verify_fail: int = 0              # consecutive failed re-validations
+    last_verified_frame: int = 0      # frame index of last successful verification
+    force_reverify: bool = False      # set on abrupt box change (possible track swap)
     attempts: int = 0
     activity: str = "Standing"
     box: Tuple[int, int, int, int] = (0, 0, 0, 0)
+    draw_box: Optional[Tuple[float, float, float, float]] = None  # smoothed (EMA) box
+    hits: int = 0                     # consecutive detections (for confirmation)
+    confirmed: bool = False           # shown only after enough confirmations
     centers: Deque[Tuple[float, float]] = field(default_factory=lambda: deque(maxlen=5))
     activity_history: Deque[str] = field(default_factory=lambda: deque(maxlen=5))
     last_seen: float = 0.0
@@ -82,6 +89,14 @@ class MonitoringPipeline:
         self._fps = 0.0
         self._fps_ema = 0.0
 
+        # Async recognition worker — face detection/embedding runs on its OWN
+        # thread so it never blocks/stutters the live stream.
+        self._recog_thread: Optional[threading.Thread] = None
+        self._recog_lock = threading.Lock()
+        self._recog_event = threading.Event()
+        self._recog_req = None            # (frame, {tid: box})  latest only
+        self._recog_out = None            # {tid: (match, emb)}  latest results
+
         # Session-based camera selection. No camera is opened until the user picks
         # one from the Live Monitoring dialog. The choice is in-memory only.
         self._has_source = False
@@ -97,17 +112,27 @@ class MonitoringPipeline:
         self.walk_thresh = float(pcfg.get("walk_motion_threshold", 0.018))
         self.idle_thresh = float(pcfg.get("idle_motion_threshold", 0.005))
         self.activity_window = max(1, int(pcfg.get("activity_smooth_window", 5)))
+        self.box_smooth_alpha = float(pcfg.get("box_smooth_alpha", 0.5))
+        self.async_recognition = bool(pcfg.get("async_recognition", True))
+        self.min_confirm_frames = max(1, int(self.settings.get("detection", "min_confirm_frames", 3)))
+        self.min_det_score = float(self.settings.get("recognition", "min_det_score", 0.50))
+        self.min_sharpness = float(self.settings.get("recognition", "min_sharpness", 18.0))
         self.jpeg_quality = int(pcfg.get("jpeg_quality", 70))
         self.draw_fps = bool(pcfg.get("draw_fps", True))
         self.recog_max_attempts = int(
             settings.get("recognition", "recognize_max_attempts", 3)
         )
         self.recognition_interval = max(1, int(
-            settings.get("recognition", "recognition_interval", 20)
+            settings.get("recognition", "recognition_interval", 12)
         ))
         self.recognition_cache_seconds = float(
             settings.get("recognition", "cache_seconds", 60)
         )
+        self.revalidation_interval = max(1, int(
+            settings.get("recognition", "revalidation_interval", 45)))
+        self.max_validation_fails = max(1, int(
+            settings.get("recognition", "max_validation_fails", 3)))
+        self.debug_recognition = bool(settings.get("recognition", "debug", False))
 
         # Adaptive low-latency controller (degrades work, never the stream).
         self.adaptive_enabled = bool(pcfg.get("adaptive_enabled", True))
@@ -145,6 +170,11 @@ class MonitoringPipeline:
             target=self._inference_loop, name="inference", daemon=True
         )
         self._infer_thread.start()
+        if self.async_recognition:
+            self._recog_thread = threading.Thread(
+                target=self._recognition_loop, name="recognition", daemon=True
+            )
+            self._recog_thread.start()
         logger.info("Pipeline started (idle — detection OFF until user presses Start)")
 
     # --------------------------------------------------- detection start/stop
@@ -239,8 +269,11 @@ class MonitoringPipeline:
 
     def stop(self) -> None:
         self._running = False
+        self._recog_event.set()           # wake the recognition worker to exit
         if self._infer_thread:
             self._infer_thread.join(timeout=3.0)
+        if self._recog_thread:
+            self._recog_thread.join(timeout=3.0)
         self.cam_manager.stop()
         self._has_source = False
         with self._lock:
@@ -278,14 +311,22 @@ class MonitoringPipeline:
         self.walk_thresh = float(pcfg.get("walk_motion_threshold", 0.018))
         self.idle_thresh = float(pcfg.get("idle_motion_threshold", 0.005))
         self.activity_window = max(1, int(pcfg.get("activity_smooth_window", 5)))
+        self.box_smooth_alpha = float(pcfg.get("box_smooth_alpha", 0.5))
+        self.async_recognition = bool(pcfg.get("async_recognition", True))
+        self.min_confirm_frames = max(1, int(self.settings.get("detection", "min_confirm_frames", 3)))
+        self.min_det_score = float(self.settings.get("recognition", "min_det_score", 0.50))
+        self.min_sharpness = float(self.settings.get("recognition", "min_sharpness", 18.0))
         self.jpeg_quality = int(pcfg.get("jpeg_quality", 70))
         self.adaptive_enabled = bool(pcfg.get("adaptive_enabled", True))
         self.cpu_high = float(pcfg.get("cpu_high_threshold", 80))
         self.cpu_low = float(pcfg.get("cpu_low_threshold", 60))
-        self.recognition_interval = max(1, int(rcfg.get("recognition_interval", 20)))
+        self.recognition_interval = max(1, int(rcfg.get("recognition_interval", 12)))
         self.recog_max_attempts = int(rcfg.get("recognize_max_attempts", 3))
         self.recognition_cache_seconds = float(rcfg.get("cache_seconds", 60))
         self.recognizer.min_face_size = int(rcfg.get("min_face_size", 28))
+        self.revalidation_interval = max(1, int(rcfg.get("revalidation_interval", 45)))
+        self.max_validation_fails = max(1, int(rcfg.get("max_validation_fails", 3)))
+        self.debug_recognition = bool(rcfg.get("debug", False))
         self._track_ttl = max(2.0, int(tcfg.get("track_buffer", 60)) / float(self.fps_limit))
 
         # Push live tunables onto the already-loaded models (no reload needed).
@@ -417,6 +458,13 @@ class MonitoringPipeline:
         if run_detect:
             detections = self.tracker.update(frame)
             self._sync_tracks(detections, frame, width, height)
+            # Face recognition: hand the newest frame + confirmed boxes to the
+            # recognition worker (async) so it never blocks the stream.
+            if self._frame_idx % self.recognition_interval == 0:
+                self._submit_recognition(frame)
+
+        # Apply any recognition results produced by the worker thread.
+        self._apply_recognition_results()
 
         # Remove stale tracks every frame so boxes vanish ~1s after a person leaves.
         self._cleanup_tracks()
@@ -425,11 +473,69 @@ class MonitoringPipeline:
         self._publish(annotated)
         self._update_stats()
 
+    # ---------------------------------------------------- recognition plumbing
+    def _confirmed_boxes(self) -> Dict[int, Tuple[int, int, int, int]]:
+        return {tid: st.box for tid, st in self._tracks.items() if st.confirmed}
+
+    def _submit_recognition(self, frame: np.ndarray) -> None:
+        boxes = self._confirmed_boxes()
+        if not boxes:
+            return
+        if self.async_recognition:
+            with self._recog_lock:
+                self._recog_req = (frame, boxes)     # latest only — drop older
+            self._recog_event.set()
+        else:
+            # Synchronous fallback (no worker thread).
+            out = self._recognize_faces(frame, boxes)
+            self._apply_outcomes(out)
+
+    def _apply_recognition_results(self) -> None:
+        with self._recog_lock:
+            out = self._recog_out
+            self._recog_out = None
+        if out:
+            self._apply_outcomes(out)
+
+    def _apply_outcomes(self, out: dict) -> None:
+        for tid, (match, emb) in out.items():
+            st = self._tracks.get(tid)
+            if st is not None:
+                self._verify_track(st, match, emb)
+
+    def _recognition_loop(self) -> None:
+        """Dedicated thread: detect faces + embed + match, never blocks the stream."""
+        while self._running:
+            if not self._recog_event.wait(timeout=0.5):
+                continue
+            self._recog_event.clear()
+            with self._recog_lock:
+                req = self._recog_req
+                self._recog_req = None
+            if req is None:
+                continue
+            frame, boxes = req
+            try:
+                out = self._recognize_faces(frame, boxes)
+            except Exception as exc:  # noqa: BLE001 - worker must survive
+                logger.exception("Recognition worker error: %s", exc)
+                continue
+            with self._recog_lock:
+                self._recog_out = out
+
     def _cleanup_tracks(self) -> None:
-        """Drop any track not seen for > max_missed_frames frames (no ghost boxes)."""
+        """Drop any track not seen for > max_missed_frames frames (no ghost boxes).
+
+        Removing the TrackState clears its name, recognition state and cached
+        embedding — a leaving person can never transfer their identity to a newcomer.
+        """
         stale = [tid for tid, st in self._tracks.items()
                  if self._frame_idx - st.last_seen_frame > self.max_missed_frames]
         for tid in stale:
+            if self.debug_recognition:
+                st = self._tracks[tid]
+                logger.info("[ID] track LOST id=%d (was %s) -> identity cleared",
+                            tid, st.name)
             del self._tracks[tid]
 
     # -------------------------------------------------------- track syncing
@@ -450,9 +556,31 @@ class MonitoringPipeline:
                 state = TrackState(track_id=tid)
                 state.activity_history = deque(maxlen=self.activity_window)
                 self._tracks[tid] = state
+                if self.debug_recognition:
+                    logger.info("[ID] track CREATED id=%d -> Guest (awaiting verification)", tid)
+            else:
+                # Possible ByteTrack swap: abrupt box jump/shrink => force re-verify.
+                if state.is_known and self._is_abrupt_change(state.box, box):
+                    state.force_reverify = True
+                    if self.debug_recognition:
+                        logger.info("[ID] track id=%d abrupt box change -> re-verify queued", tid)
             state.box = box
             state.last_seen = now
             state.last_seen_frame = self._frame_idx
+
+            # Confirmation: only show a track after it has been seen a few times
+            # (filters out random/transient false detections).
+            state.hits += 1
+            if not state.confirmed and state.hits >= self.min_confirm_frames:
+                state.confirmed = True
+
+            # Smooth the drawn box (EMA) so it moves fluidly without jitter.
+            a = self.box_smooth_alpha
+            if state.draw_box is None:
+                state.draw_box = tuple(float(v) for v in box)
+            else:
+                state.draw_box = tuple(a * n + (1 - a) * o
+                                       for n, o in zip(box, state.draw_box))
 
             # Motion = normalised centroid displacement across recent frames.
             cx = (box[0] + box[2]) / 2.0
@@ -461,53 +589,177 @@ class MonitoringPipeline:
             state.centers.append((cx, cy))
             motion = self._motion_speed(state.centers, box_h)
 
-            # Recognise once per track; retry every recognition_interval frames
-            # until a confident known match (never every frame, never locks Guest).
-            if not state.recognized and (
-                state.attempts == 0 or self._frame_idx % self.recognition_interval == 0
-            ):
-                self._try_recognize(state, frame, box)
-
-            # Activity from MOTION (not pose) -> Standing / Walking / Idle, smoothed
-            # over a window so the displayed label stays stable (no flicker).
+            # Activity from MOTION (not pose) -> Standing / Walking / Idle, smoothed.
             self._update_activity(state, motion)
 
         # Tracks not seen this update accumulate "missed" frames; _cleanup_tracks()
         # removes them once they exceed max_missed_frames (handled every frame).
 
-    def _try_recognize(self, state: TrackState, frame: np.ndarray, box) -> None:
-        """Detect a face inside the person box and associate the recognised name."""
-        # Search the upper ~55% of the body box where the face is expected.
+    @staticmethod
+    def _is_abrupt_change(old_box, new_box) -> bool:
+        """Detect a sudden box jump/resize that suggests the track swapped person."""
+        if old_box == (0, 0, 0, 0):
+            return False
+        if iou(old_box, new_box) < 0.2:
+            return True
+        ow = max(1, old_box[2] - old_box[0]); nw = max(1, new_box[2] - new_box[0])
+        ratio = ow / nw if ow > nw else nw / ow
+        return ratio > 1.8
+
+    # --------------------------------------------- frame-level face recognition
+    def _recognize_faces(self, frame: np.ndarray,
+                         boxes: Dict[int, Tuple[int, int, int, int]]) -> dict:
+        """Detect faces on the WHOLE frame, quality-gate them, assign each to ONE
+        track, match embeddings. Returns ``{track_id: (match, emb)}``.
+
+        Runs on the recognition worker thread. Detecting on the full frame plus a
+        unique one-face-per-track assignment prevents a neighbour's face leaking
+        into another person's box (the multi-person identity-leakage bug).
+        """
+        if not boxes:
+            return {}
+        faces = []
+        for f in self.recognizer.detect_faces(frame):
+            x1, y1, x2, y2 = [int(v) for v in f.bbox]
+            if not self._face_quality_ok(frame, f, (x1, y1, x2, y2)):
+                continue
+            faces.append({
+                "box": (x1, y1, x2, y2),
+                "center": ((x1 + x2) / 2.0, (y1 + y2) / 2.0),
+                "area": (x2 - x1) * (y2 - y1),
+                "emb": np.asarray(f.normed_embedding, dtype=np.float32),
+            })
+
+        assignments = self._assign_faces_to_tracks(faces, boxes)
+        out = {}
+        for tid, face in assignments.items():
+            out[tid] = (self.recognizer.match_embedding(face["emb"]), face["emb"])
+        return out
+
+    def _face_quality_ok(self, frame: np.ndarray, face, box) -> bool:
+        """Quality gate — reject small / low-confidence / blurry faces.
+
+        We would rather show *Guest* than risk a wrong identity from a poor face.
+        """
         x1, y1, x2, y2 = box
-        face_region_y2 = y1 + int((y2 - y1) * 0.55)
-        crop = frame[y1:face_region_y2, x1:x2]
+        if min(x2 - x1, y2 - y1) < self.recognizer.min_face_size:
+            return False
+        if float(getattr(face, "det_score", 1.0)) < self.min_det_score:
+            return False
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(frame.shape[1], x2), min(frame.shape[0], y2)
+        crop = frame[y1:y2, x1:x2]
         if crop.size == 0:
+            return False
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        sharpness = cv2.Laplacian(gray, cv2.CV_64F).var()
+        return sharpness >= self.min_sharpness
+
+    def _assign_faces_to_tracks(self, faces: list, boxes: dict) -> dict:
+        """Greedily assign each detected face to at most ONE track (and vice versa).
+
+        A face belongs to the track whose body box contains the face in its upper
+        region; ties go to the box whose top is closest to the face (its head).
+        """
+        assignments: dict = {}
+        claimed = set()
+        for face in sorted(faces, key=lambda f: f["area"], reverse=True):
+            cx, cy = face["center"]
+            fw = face["box"][2] - face["box"][0]
+            best_tid, best_score = None, None
+            for tid, bbox in boxes.items():
+                if tid in claimed:
+                    continue
+                bx1, by1, bx2, by2 = bbox
+                bw, bh = bx2 - bx1, by2 - by1
+                if bw <= 0 or bh <= 0:
+                    continue
+                # Face centre must be inside the body box and in its upper ~65%.
+                if not (bx1 <= cx <= bx2 and by1 <= cy <= by1 + 0.65 * bh):
+                    continue
+                if fw > bw * 1.2:           # face wider than body -> implausible
+                    continue
+                score = cy - by1            # distance from box top; smaller = its head
+                if best_score is None or score < best_score:
+                    best_score, best_tid = score, tid
+            if best_tid is not None:
+                claimed.add(best_tid)
+                assignments[best_tid] = face
+        return assignments
+
+    def _verify_track(self, state: TrackState, match: dict, emb: np.ndarray) -> None:
+        """Verify/assign identity for a track from a precomputed FAISS match."""
+        known = match["is_known"]
+
+        if not state.recognized:
+            # New / Guest track: only bind a name on a confident known match.
+            if known:
+                self._bind_identity(state, match, emb)
             return
 
-        matches = self.recognizer.recognize_faces(crop)
-        state.attempts += 1
-        if matches:
-            best = max(matches, key=lambda m: m.score)
-            if best.is_known:
-                state.name = best.name
-                state.department = best.department
-                state.color = best.color
-                state.is_known = True
-                state.score = best.score
-                state.recognized = True       # lock — known person (cached on track)
-                state.recognized_at = time.time()
-                logger.info("Track %d recognised as %s [%s] (%.2f) — cached for %.0fs",
-                            state.track_id, best.name, best.department, best.score,
-                            self.recognition_cache_seconds)
-                return
-        # Not recognised yet: show a stable "Guest" label but KEEP retrying at the
-        # recognition interval — never lock as Guest. This is essential for far
-        # PTZ/IP cameras: the name appears as soon as a clear face is seen when the
-        # person approaches. Only a confident known match locks the track.
+        # Already named -> identity PERSISTS with the track. Re-validate only when
+        # due (interval) or forced (abrupt box change). Crucially, a weak/hidden/
+        # angled face never downgrades to Guest — tracking alone maintains identity.
+        due = (self._frame_idx - state.last_verified_frame >= self.revalidation_interval) \
+            or state.force_reverify
+        if not due:
+            return
+        state.force_reverify = False
+
+        if known and match["name"] == state.name:
+            # Same person confirmed by a clear face -> refresh the binding.
+            state.verify_fail = 0
+            state.last_verified_frame = self._frame_idx
+            state.identity_emb = emb
+            return
+
+        if not known:
+            # Face visible but too weak/angled to match (e.g. side/partial view of
+            # the SAME person). Keep the identity — do NOT count as a failure and
+            # never drop to Guest. The track holds the name until it is lost.
+            if self.debug_recognition:
+                logger.info("[ID] track id=%d weak re-check -> keep %s",
+                            state.track_id, state.name)
+            return
+
+        # A DIFFERENT enrolled person's face is confidently in this box -> likely a
+        # ByteTrack swap. Switch identity only after repeated agreement (verified),
+        # never instantly, so a single noisy frame can't move an identity.
+        state.verify_fail += 1
+        if self.debug_recognition:
+            logger.info("[ID] track id=%d sees DIFFERENT %s (was %s) %d/%d",
+                        state.track_id, match["name"], state.name,
+                        state.verify_fail, self.max_validation_fails)
+        if state.verify_fail >= self.max_validation_fails:
+            self._bind_identity(state, match, emb)   # verified switch to the new person
+
+    def _bind_identity(self, state: TrackState, match: dict, emb: np.ndarray) -> None:
+        state.name = match["name"]
+        state.department = match["department"]
+        state.color = match["color"]
+        state.is_known = True
+        state.score = match["score"]
+        state.recognized = True
+        state.recognized_at = time.time()
+        state.identity_emb = emb
+        state.verify_fail = 0
+        state.last_verified_frame = self._frame_idx
+        if self.debug_recognition:
+            logger.info("[ID] track id=%d -> %s [%s] conf=%.2f @frame %d",
+                        state.track_id, match["name"], match["department"],
+                        match["score"], self._frame_idx)
+
+    def _downgrade_to_guest(self, state: TrackState) -> None:
+        if self.debug_recognition:
+            logger.info("[ID] track id=%d DOWNGRADED %s -> Guest (failed re-validation)",
+                        state.track_id, state.name)
         state.name = self.recognizer.guest_label
-        state.is_known = False
         state.department = ""
         state.color = ""
+        state.is_known = False
+        state.recognized = False
+        state.identity_emb = None
+        state.verify_fail = 0
 
     def _update_activity(self, state: TrackState, motion: float) -> None:
         """Motion-driven activity (Standing / Walking / Idle) with majority smoothing.
@@ -544,7 +796,11 @@ class MonitoringPipeline:
         scale = max(0.7, frame.shape[1] / 1280.0)
         box_th = max(2, int(round(3 * scale)))
         for state in self._tracks.values():
-            x1, y1, x2, y2 = state.box
+            # Only draw confirmed tracks (no random/transient false boxes).
+            if not state.confirmed:
+                continue
+            draw = state.draw_box or state.box     # smoothed coords for fluid motion
+            x1, y1, x2, y2 = (int(round(v)) for v in draw)
             if x2 <= x1 or y2 <= y1:
                 continue
             # Department colour for known people; neutral colour for guests.
@@ -635,8 +891,9 @@ class MonitoringPipeline:
     def _update_stats(self) -> None:
         status = self.camera_state()
         with self._lock:
-            people = len(self._tracks)
-            recognized = sum(1 for s in self._tracks.values() if s.is_known)
+            confirmed = [s for s in self._tracks.values() if s.confirmed]
+            people = len(confirmed)
+            recognized = sum(1 for s in confirmed if s.is_known)
             guests = people - recognized
             self._stats = {
                 "people_count": people,
@@ -650,9 +907,15 @@ class MonitoringPipeline:
     def reload_recognition(self) -> None:
         """Refresh the FAISS index after person enrollment changes."""
         self.recognizer.refresh_index()
-        # Force re-recognition of currently tracked people.
+        # Force re-recognition of currently tracked people (clear identity bindings).
         with self._lock:
             for st in self._tracks.values():
                 st.recognized = False
+                st.is_known = False
+                st.name = self.recognizer.guest_label
+                st.department = ""
+                st.color = ""
+                st.identity_emb = None
+                st.verify_fail = 0
                 st.attempts = 0
         logger.info("Recognition index reloaded; tracks reset for re-recognition")

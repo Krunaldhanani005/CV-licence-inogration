@@ -51,6 +51,8 @@ detection:
   imgsz: 640          # YOLO input size (kept at 640 for CPU speed; the *display*
                       # resolution is pipeline.stream_resolution, set separately)
   device: "cpu"
+  min_confirm_frames: 3   # a track must be seen this many times before it's shown
+                          # (avoids random/flickering false boxes)
 
 tracking:
   tracker: "bytetrack.yaml"
@@ -62,14 +64,25 @@ tracking:
 
 recognition:
   model_name: "buffalo_sc"     # lightweight CPU-friendly InsightFace pack
-  det_size: 640
-  threshold: 0.45              # cosine similarity threshold for a known match
-  min_face_size: 28            # ignore faces smaller than this (pixels) — lower
-                               # so far PTZ/IP-camera faces still get recognised
+  det_size: 960                # face-detector input size — higher = better FAR-face
+                               # detection (runs on the recognition thread, so it
+                               # does NOT slow the live stream)
+  threshold: 0.45              # cosine similarity for a known match — THIS is the
+                               # guard against random/wrong identities (keep it firm)
+  min_face_size: 20            # accept smaller far faces (recognition still gated
+                               # by threshold, so a weak match stays "Guest")
   guest_label: "Guest"
   recognize_max_attempts: 3    # (kept) tracks never lock as Guest; they keep retrying
-  recognition_interval: 15     # re-attempt recognition every N frames per track
+  recognition_interval: 12     # how often (frames) to run the frame-level face scan
   cache_seconds: 60            # reuse a track's identity for this long (smart cache)
+  revalidation_interval: 45    # re-verify a recognised track every N frames
+  max_validation_fails: 3      # consecutive failed re-checks before downgrade to Guest
+  debug: false                 # verbose per-track identity logging
+  # ---- face quality gate (prefer "Guest" over a wrong identity) ----
+  # Permissive enough to ATTEMPT far faces; the recognition threshold above is
+  # what actually prevents wrong names (weak matches fall back to Guest).
+  min_det_score: 0.40          # InsightFace face-detector confidence floor
+  min_sharpness: 8.0           # Laplacian-variance floor (rejects only very blurry)
 
 pose:
   model_complexity: 0          # 0 = fastest, CPU friendly
@@ -92,6 +105,8 @@ pipeline:
   activity_smooth_window: 5      # majority vote window -> stable labels
   jpeg_quality: 70
   draw_fps: false      # FPS is shown in the dashboard UI, keep the stream clean
+  box_smooth_alpha: 0.5  # EMA factor for smooth bounding-box movement (0..1)
+  async_recognition: true  # run face recognition on its own thread (no stream stutter)
   # ---- adaptive low-latency mode ----
   adaptive_enabled: true         # auto-degrade under CPU pressure (never the stream)
   cpu_high_threshold: 80         # % CPU that triggers degradation
