@@ -80,6 +80,9 @@ recognition:
   reverify_gap_frames: 4       # if a recognised track is lost this many frames then
                                # reappears, treat it as a possible NEW person ->
                                # clear identity + re-verify (prevents id-reuse transfer)
+  # ---- appearance guard (catches smooth ByteTrack swaps when people cross) ----
+  appearance_corr_threshold: 0.40   # body-colour correlation below this = different body
+  appearance_mismatch_frames: 4     # sustained mismatch frames before invalidating
   debug: false                 # verbose per-track identity logging
   # ---- face quality gate (prefer "Guest" over a wrong identity) ----
   # Permissive enough to ATTEMPT far faces; the recognition threshold above is

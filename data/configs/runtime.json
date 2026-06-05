@@ -1,38 +1,41 @@
 {
   "pipeline": {
-    "stream_resolution": "1920x1080",
-    "fps_limit": 16,
+    "stream_resolution": "1280x720",
+    "fps_limit": 15,
     "detect_every_n_frames": 1,
     "pose_every_n_frames": 10,
     "jpeg_quality": 60,
     "max_missed_frames": 10,
-    "walk_motion_threshold": 0.018,
+    "walk_motion_threshold": 0.02,
     "idle_motion_threshold": 0.005,
-    "activity_smooth_window": 5,
-    "box_smooth_alpha": 0.8,
-    "async_recognition": true
+    "activity_smooth_window": 9,
+    "box_smooth_alpha": 0.85,
+    "async_recognition": true,
+    "cpu_high_threshold": 87
   },
   "recognition": {
-    "threshold": 0.45,
-    "recognition_interval": 12,
-    "min_face_size": 17,
-    "recognize_max_attempts": 2,
-    "cache_seconds": 30,
-    "revalidation_interval": 45,
+    "threshold": 0.4,
+    "recognition_interval": 15,
+    "min_face_size": 20,
+    "recognize_max_attempts": 1,
+    "cache_seconds": 40,
+    "revalidation_interval": 60,
     "max_validation_fails": 3,
     "debug": false,
     "min_det_score": 0.4,
     "min_sharpness": 8.0,
     "det_size": 960,
-    "reverify_gap_frames": 5
+    "reverify_gap_frames": 3,
+    "appearance_corr_threshold": 0.5,
+    "appearance_mismatch_frames": 3
   },
   "detection": {
-    "confidence": 0.45,
+    "confidence": 0.35,
     "imgsz": 640,
-    "min_confirm_frames": 3
+    "min_confirm_frames": 2
   },
   "tracking": {
-    "track_buffer": 15
+    "track_buffer": 10
   },
   "pose": {
     "enabled": true,

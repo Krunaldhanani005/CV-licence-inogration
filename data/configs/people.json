@@ -329,19 +329,6 @@
     "created_at": "2026-06-03T18:16:25",
     "updated_at": "2026-06-03T18:16:25"
   },
-  "85765b188177491f9ae0dacc8adb378c": {
-    "name": "Kenvi",
-    "department": "Sales Manager",
-    "color": "#CE4981",
-    "images": [
-      "face_001.jpeg",
-      "face_002.jpeg",
-      "face_003.jpeg"
-    ],
-    "embedding_count": 3,
-    "created_at": "2026-06-03T18:18:59",
-    "updated_at": "2026-06-03T18:18:59"
-  },
   "0684d98a5d624255a0d2a90daca68279": {
     "name": "Jaimin",
     "department": "Marketing",
@@ -419,5 +406,31 @@
     "embedding_count": 3,
     "created_at": "2026-06-03T18:24:25",
     "updated_at": "2026-06-03T18:24:26"
+  },
+  "c4f18f84493548fa9f4db285288b3806": {
+    "name": "Tahir",
+    "department": "Sales",
+    "color": "#22C55E",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-04T18:43:50",
+    "updated_at": "2026-06-04T18:43:51"
+  },
+  "58082bd85e554e039bcc88cb1b0d48cd": {
+    "name": "Kenvi",
+    "department": "Sales Manager",
+    "color": "#CE4981",
+    "images": [
+      "face_001.jpeg",
+      "face_002.jpeg",
+      "face_003.jpeg"
+    ],
+    "embedding_count": 3,
+    "created_at": "2026-06-05T11:10:25",
+    "updated_at": "2026-06-05T11:10:26"
   }
 }

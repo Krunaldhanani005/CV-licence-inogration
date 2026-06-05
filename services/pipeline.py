@@ -49,7 +49,12 @@ class TrackState:
     verify_fail: int = 0              # consecutive failed re-validations
     last_verified_frame: int = 0      # frame index of last successful verification
     force_reverify: bool = False      # set on abrupt box change (possible track swap)
+    appearance: Optional[np.ndarray] = None   # body colour histogram (swap detection)
+    appearance_mismatch: int = 0      # consecutive frames the body looks different
     attempts: int = 0
+    pending_match: Optional[dict] = None         # candidate identity not yet confirmed
+    pending_emb: Optional[np.ndarray] = None     # embedding for pending candidate
+    pending_confirm: int = 0                     # consecutive rounds agreeing on pending
     activity: str = "Standing"
     box: Tuple[int, int, int, int] = (0, 0, 0, 0)
     draw_box: Optional[Tuple[float, float, float, float]] = None  # smoothed (EMA) box
@@ -68,6 +73,15 @@ class MonitoringPipeline:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.cam_manager = CameraManager(settings)
+
+        # Cap OpenCV's internal thread pool so its many small ops (resize, colour
+        # convert, histograms) don't spawn threads that contend with YOLO and the
+        # recognition worker — this removes the CPU-contention stutter that shows up
+        # right when a person is detected and recognition kicks in.
+        try:
+            cv2.setNumThreads(4)
+        except Exception:  # noqa: BLE001
+            pass
 
         # Models are loaded once and reused across restarts.
         logger.info("Initialising pipeline models…")
@@ -136,6 +150,10 @@ class MonitoringPipeline:
             settings.get("recognition", "max_validation_fails", 3)))
         self.reverify_gap_frames = max(2, int(
             settings.get("recognition", "reverify_gap_frames", 5)))
+        self.appearance_corr_threshold = float(
+            settings.get("recognition", "appearance_corr_threshold", 0.40))
+        self.appearance_mismatch_frames = max(1, int(
+            settings.get("recognition", "appearance_mismatch_frames", 4)))
         self.debug_recognition = bool(settings.get("recognition", "debug", False))
 
         # Adaptive low-latency controller (degrades work, never the stream).
@@ -331,6 +349,8 @@ class MonitoringPipeline:
         self.revalidation_interval = max(1, int(rcfg.get("revalidation_interval", 45)))
         self.max_validation_fails = max(1, int(rcfg.get("max_validation_fails", 3)))
         self.reverify_gap_frames = max(2, int(rcfg.get("reverify_gap_frames", 5)))
+        self.appearance_corr_threshold = float(rcfg.get("appearance_corr_threshold", 0.40))
+        self.appearance_mismatch_frames = max(1, int(rcfg.get("appearance_mismatch_frames", 4)))
         self.debug_recognition = bool(rcfg.get("debug", False))
         self._track_ttl = max(2.0, int(tcfg.get("track_buffer", 60)) / float(self.fps_limit))
 
@@ -484,12 +504,37 @@ class MonitoringPipeline:
         # Apply any recognition results produced by the worker thread.
         self._apply_recognition_results()
 
+        # Enforce ONE active track per identity (no two people with the same name).
+        self._resolve_duplicate_identities()
+
         # Remove stale tracks every frame so boxes vanish ~1s after a person leaves.
         self._cleanup_tracks()
 
         annotated = self._draw(frame)
         self._publish(annotated)
         self._update_stats()
+
+    def _resolve_duplicate_identities(self) -> None:
+        """Guarantee a name is on at most ONE active track.
+
+        If two tracks end up with the same identity (e.g. a brief mis-association
+        during an overlap), keep the ESTABLISHED holder (recognised earliest) and
+        send the other back to Guest so it must re-verify — so two people can never
+        show the same name at once.
+        """
+        by_name: Dict[str, list] = {}
+        for st in self._tracks.values():
+            if st.is_known and st.recognized and st.name:
+                by_name.setdefault(st.name, []).append(st)
+        for name, group in by_name.items():
+            if len(group) < 2:
+                continue
+            group.sort(key=lambda s: s.recognized_at)   # earliest-recognised first
+            for st in group[1:]:
+                if self.debug_recognition:
+                    logger.info("[ID] duplicate name '%s' on track %d -> Guest "
+                                "(kept track %d)", name, st.track_id, group[0].track_id)
+                self._invalidate_identity(st, "duplicate-name")
 
     # ---------------------------------------------------- recognition plumbing
     def _confirmed_boxes(self) -> Dict[int, Tuple[int, int, int, int]]:
@@ -585,16 +630,38 @@ class MonitoringPipeline:
                 if self.debug_recognition:
                     logger.info("[ID] track CREATED id=%d -> Guest (awaiting verification)", tid)
             else:
-                # Detect track-ID REUSE / swap. ByteTrack can hand a lost id to a
-                # newcomer, or swap ids when two people cross. In either case the
-                # bound identity must NOT carry over to a different body:
-                #   * gap  -> the track was lost then re-associated (re-entry)
-                #   * abrupt box jump/resize -> likely a different person now
+                # Identity is NOT invalidated on gap/box-jump for the same person —
+                # a brief occlusion keeps the identity through tracking persistence.
+                # HOWEVER: ByteTrack can re-associate a DIFFERENT person to this
+                # track_id while the original occupant is temporarily lost. We catch
+                # that by running a single-frame body-colour check on re-entry: if
+                # the clothing histogram differs from the stored baseline the identity
+                # is cleared immediately (before the frame is drawn) rather than
+                # waiting for 3 sustained mismatches with the wrong name visible.
                 gap = self._frame_idx - state.last_seen_frame
-                if state.recognized and (gap > self.reverify_gap_frames
-                                         or self._is_abrupt_change(state.box, box)):
-                    reason = "re-entry/gap" if gap > self.reverify_gap_frames else "abrupt-change"
-                    self._invalidate_identity(state, reason)
+                if state.recognized and gap > self.reverify_gap_frames:
+                    if state.appearance is not None:
+                        reentry_hist = self._body_hist(frame, box)
+                        if reentry_hist is not None:
+                            corr = cv2.compareHist(
+                                state.appearance, reentry_hist,
+                                cv2.HISTCMP_CORREL)
+                            if corr < self.appearance_corr_threshold:
+                                # Body looks different from the baseline —
+                                # this is likely a different person reusing
+                                # the track id. Clear identity now.
+                                self._invalidate_identity(
+                                    state, "re-entry-appearance-mismatch")
+                                if self.debug_recognition:
+                                    logger.info(
+                                        "[ID] track id=%d re-entry corr=%.2f "
+                                        "< %.2f -> identity cleared immediately",
+                                        state.track_id, corr,
+                                        self.appearance_corr_threshold)
+                    if state.recognized:
+                        # Same appearance (or no baseline yet): identity
+                        # persists but a face re-check is scheduled.
+                        state.force_reverify = True
             state.box = box
             state.last_seen = now
             state.last_seen_frame = self._frame_idx
@@ -623,6 +690,13 @@ class MonitoringPipeline:
             # Activity from MOTION (not pose) -> Standing / Walking / Idle, smoothed.
             self._update_activity(state, motion)
 
+            # Appearance guard: a recognised track whose body colours suddenly and
+            # persistently change is a DIFFERENT person now — this catches a smooth
+            # ByteTrack swap when two people cross/pass (no gap, no box jump, and
+            # back-facing so the face can't help). -> invalidate -> re-verify.
+            if state.recognized:
+                self._check_appearance(state, frame, box)
+
         # Tracks not seen this update accumulate "missed" frames; _cleanup_tracks()
         # removes them once they exceed max_missed_frames (handled every frame).
 
@@ -636,6 +710,59 @@ class MonitoringPipeline:
         ow = max(1, old_box[2] - old_box[0]); nw = max(1, new_box[2] - new_box[0])
         ratio = ow / nw if ow > nw else nw / ow
         return ratio > 1.8
+
+    # ------------------------------------------------------ appearance guard
+    @staticmethod
+    def _body_hist(frame: np.ndarray, box) -> Optional[np.ndarray]:
+        """Hue-Saturation histogram of the torso (clothing colours), lighting-robust."""
+        x1, y1, x2, y2 = box
+        bw, bh = x2 - x1, y2 - y1
+        if bw < 12 or bh < 24:
+            return None
+        # Central torso band — captures clothing, avoids background / legs.
+        cx1, cx2 = x1 + int(0.20 * bw), x2 - int(0.20 * bw)
+        cy1, cy2 = y1 + int(0.15 * bh), y1 + int(0.55 * bh)
+        crop = frame[max(0, cy1):cy2, max(0, cx1):cx2]
+        if crop.size == 0:
+            return None
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        hist = cv2.calcHist([hsv], [0, 1], None, [16, 16], [0, 180, 0, 256])
+        cv2.normalize(hist, hist, 0, 1, cv2.NORM_MINMAX)
+        return hist
+
+    def _check_appearance(self, state: TrackState, frame: np.ndarray, box) -> None:
+        """Persistence-safe anti-transfer signal.
+
+        Compares the track's current body colours to the baseline captured at
+        recognition. A SUSTAINED drastic change (different clothing) means a
+        different person reused this id -> invalidate. A matching body keeps the
+        identity even with the face hidden (back/side/occluded). The baseline
+        slowly adapts to the SAME person (turning, lighting) so it never
+        false-triggers, but a sudden swap (low correlation) does not update it.
+        """
+        # When another confirmed person's box significantly overlaps this one their
+        # clothing contaminates the torso histogram and would cause a false identity
+        # reset.  Skip the check entirely while the overlap lasts; the mismatch
+        # counter is NOT incremented so returning to normal appearance is seamless.
+        for other in self._tracks.values():
+            if other.track_id != state.track_id and other.confirmed \
+                    and iou(box, other.box) > 0.15:
+                return
+        cur = self._body_hist(frame, box)
+        if cur is None:
+            return
+        if state.appearance is None:
+            state.appearance = cur                 # capture baseline for this identity
+            return
+        corr = cv2.compareHist(state.appearance, cur, cv2.HISTCMP_CORREL)
+        if corr < self.appearance_corr_threshold:
+            state.appearance_mismatch += 1
+            if state.appearance_mismatch >= self.appearance_mismatch_frames:
+                self._invalidate_identity(state, "appearance-change")
+        else:
+            state.appearance_mismatch = 0
+            # Slowly adapt the baseline to the same person (handles turning/lighting).
+            cv2.addWeighted(state.appearance, 0.92, cur, 0.08, 0, state.appearance)
 
     # --------------------------------------------- frame-level face recognition
     def _recognize_faces(self, frame: np.ndarray,
@@ -700,7 +827,7 @@ class MonitoringPipeline:
         for face in sorted(faces, key=lambda f: f["area"], reverse=True):
             cx, cy = face["center"]
             fw = face["box"][2] - face["box"][0]
-            best_tid, best_score = None, None
+            cands = []
             for tid, bbox in boxes.items():
                 if tid in claimed:
                     continue
@@ -708,17 +835,29 @@ class MonitoringPipeline:
                 bw, bh = bx2 - bx1, by2 - by1
                 if bw <= 0 or bh <= 0:
                     continue
-                # Face centre must be inside the body box and in its upper ~65%.
-                if not (bx1 <= cx <= bx2 and by1 <= cy <= by1 + 0.65 * bh):
+                bcx = (bx1 + bx2) / 2.0
+                # Face must be inside the body box, in its upper ~60% (head region).
+                # NOTE: no hard horizontal filter — a leaning / looking-down person's
+                # face can be off-centre; alignment is only used to RANK candidates
+                # and to reject genuinely ambiguous overlaps below.
+                if not (bx1 <= cx <= bx2 and by1 <= cy <= by1 + 0.60 * bh):
                     continue
-                if fw > bw * 1.2:           # face wider than body -> implausible
+                if fw > bw * 1.2:                  # face wider than body -> implausible
                     continue
-                score = cy - by1            # distance from box top; smaller = its head
-                if best_score is None or score < best_score:
-                    best_score, best_tid = score, tid
-            if best_tid is not None:
-                claimed.add(best_tid)
-                assignments[best_tid] = face
+                hscore = abs(cx - bcx) / bw        # horizontal alignment (0 = centered)
+                vscore = (cy - by1) / bh           # vertical (0 = at the top)
+                cands.append((hscore + 0.5 * vscore, tid))
+            if not cands:
+                continue
+            cands.sort()
+            # Overlap safety: only when TWO bodies are almost equally plausible for
+            # this face do we refuse to guess (could give one person the other's
+            # name). A single clear body always gets the face.
+            if len(cands) >= 2 and (cands[1][0] - cands[0][0]) < 0.10:
+                continue
+            best_tid = cands[0][1]
+            claimed.add(best_tid)
+            assignments[best_tid] = face
         return assignments
 
     def _verify_track(self, state: TrackState, match: dict, emb: np.ndarray) -> None:
@@ -726,9 +865,39 @@ class MonitoringPipeline:
         known = match["is_known"]
 
         if not state.recognized:
-            # New / Guest track: only bind a name on a confident known match.
+            # Guest track: require the same person to match across N consecutive
+            # recognition rounds before binding the identity.  One lucky frame
+            # (face briefly inside the wrong box during an overlap or occlusion)
+            # can NEVER transfer a name — the face must be persistently visible in
+            # this track's box, not just transiently.
             if known:
-                self._bind_identity(state, match, emb)
+                if (state.pending_match is not None
+                        and match["name"] == state.pending_match["name"]):
+                    state.pending_confirm += 1
+                    state.pending_match = match
+                    state.pending_emb = emb
+                    if state.pending_confirm >= self.recog_max_attempts:
+                        self._bind_identity(state, state.pending_match, state.pending_emb)
+                        # _bind_identity clears pending state
+                    elif self.debug_recognition:
+                        logger.info("[ID] track id=%d pending %s %d/%d",
+                                    state.track_id, match["name"],
+                                    state.pending_confirm, self.recog_max_attempts)
+                else:
+                    # New name (or first match): start/restart the confirmation window.
+                    state.pending_match = match
+                    state.pending_emb = emb
+                    state.pending_confirm = 1
+                    if self.debug_recognition:
+                        logger.info("[ID] track id=%d pending reset -> %s (1/%d)",
+                                    state.track_id, match["name"], self.recog_max_attempts)
+            else:
+                # No face match this round: clear pending — the face is not
+                # consistently visible in this box, so it was a transient overlap.
+                if state.pending_match is not None:
+                    state.pending_match = None
+                    state.pending_emb = None
+                    state.pending_confirm = 0
             return
 
         # Already named -> identity PERSISTS with the track. Re-validate only when
@@ -778,6 +947,13 @@ class MonitoringPipeline:
         state.identity_emb = emb
         state.verify_fail = 0
         state.last_verified_frame = self._frame_idx
+        # Clear any pending confirmation state.
+        state.pending_match = None
+        state.pending_emb = None
+        state.pending_confirm = 0
+        # Re-capture a fresh body-colour baseline for the newly bound person.
+        state.appearance = None
+        state.appearance_mismatch = 0
         if self.debug_recognition:
             logger.info("[ID] track id=%d -> %s [%s] conf=%.2f @frame %d",
                         state.track_id, match["name"], match["department"],
@@ -800,6 +976,11 @@ class MonitoringPipeline:
         state.identity_emb = None
         state.verify_fail = 0
         state.force_reverify = True
+        state.appearance = None
+        state.appearance_mismatch = 0
+        state.pending_match = None
+        state.pending_emb = None
+        state.pending_confirm = 0
         state.gen = self._next_gen()       # new identity epoch -> stale results dropped
 
     def _next_gen(self) -> int:
@@ -817,6 +998,9 @@ class MonitoringPipeline:
         state.recognized = False
         state.identity_emb = None
         state.verify_fail = 0
+        state.pending_match = None
+        state.pending_emb = None
+        state.pending_confirm = 0
 
     def _update_activity(self, state: TrackState, motion: float) -> None:
         """Motion-driven activity (Standing / Walking / Idle) with majority smoothing.

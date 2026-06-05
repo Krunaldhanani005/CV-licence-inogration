@@ -1,9 +1,12 @@
 # ByteTrack tracker configuration (Ultralytics format).
 # Tuned for CPU reception monitoring — stable IDs, modest re-id buffer.
 tracker_type: bytetrack
-track_high_thresh: 0.5    # first association confidence threshold
-track_low_thresh: 0.1     # second association confidence threshold
-new_track_thresh: 0.6     # confidence to spawn a new track
-track_buffer: 15          # reception: drop lost tracks quickly (no ghost boxes)
-match_thresh: 0.8         # IoU matching threshold
+track_high_thresh: 0.45   # primary association: include slightly lower-conf detections
+track_low_thresh: 0.1     # secondary association confidence threshold
+new_track_thresh: 0.5     # was 0.6 — allows distant/small persons (YOLO conf 0.5+) to
+                          # start new tracks; min_confirm_frames=3 still filters flickers
+track_buffer: 10          # ~0.67s @15fps — fast enough to re-associate a briefly
+                          # occluded person; coordinated with max_missed_frames=10
+match_thresh: 0.75        # was 0.8 — slightly more lenient IoU; fast walkers whose box
+                          # jumps between frames still re-associate to their existing track
 fuse_score: true
