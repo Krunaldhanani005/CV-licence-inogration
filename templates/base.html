@@ -21,10 +21,18 @@
           <span class="ico">▦</span> Dashboard</a>
         <a href="/camera" class="nav-item {{ 'active' if active=='camera' }}">
           <span class="ico">⊞</span> Camera Settings</a>
+
+        <div class="nav-section-label">Face Recognition</div>
         <a href="/people" class="nav-item {{ 'active' if active=='people' }}">
           <span class="ico">☺</span> Person Management</a>
         <a href="/settings" class="nav-item {{ 'active' if active=='settings' }}">
-          <span class="ico">⚙</span> System Settings</a>
+          <span class="ico">⚙</span> FR Settings</a>
+
+        <div class="nav-section-label">Object Detection</div>
+        <a href="/object-settings" class="nav-item {{ 'active' if active=='object_settings' }}">
+          <span class="ico">◈</span> OD Settings</a>
+        <a href="/custom-objects" class="nav-item {{ 'active' if active=='custom_objects' }}">
+          <span class="ico">★</span> Custom Objects</a>
       </nav>
       <div class="sidebar-footer">
         <span id="globalCamDot" class="status-dot off"></span>

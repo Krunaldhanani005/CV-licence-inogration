@@ -135,16 +135,13 @@ class PersonService:
             filename = f"face_{existing + saved + 1:03d}{ext}"
             dest = os.path.join(person_dir, filename)
             file.save(dest)
-            if not self._has_face(dest):
+            # Accept any readable image — enrollment decides if a face is extractable.
+            # A stricter face-detection gate was silently discarding valid uploads where
+            # InsightFace missed the face (unusual angle, low resolution, etc.).
+            if cv2.imread(dest) is None:
                 os.remove(dest)
-                logger.warning("No face detected in upload %s — discarded", file.filename)
+                logger.warning("Could not decode image %s — discarded", file.filename)
                 continue
             self.db.add_image(person_id, filename, self.recognizer.now_iso())
             saved += 1
         return saved
-
-    def _has_face(self, image_path: str) -> bool:
-        img = cv2.imread(image_path)
-        if img is None:
-            return False
-        return len(self.recognizer.detect_faces(img)) > 0

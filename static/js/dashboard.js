@@ -1,17 +1,69 @@
-/* Dashboard: single Start/Stop toggle, analytics, fullscreen, reception mode.
-   One shared MJPEG stream (/api/video_feed) feeds normal + fullscreen + reception
-   views — no duplicate processing. */
-const toggleBtn = document.getElementById("toggleBtn");
-const toggleLabel = document.getElementById("toggleLabel");
-const ovStart = document.getElementById("ovStart");
-const fsBtn = document.getElementById("fsBtn");
-const receptionBtn = document.getElementById("receptionBtn");
+/* Dashboard: mode selector (FR / OD), Start/Stop, analytics, fullscreen, reception. */
+const toggleBtn      = document.getElementById("toggleBtn");
+const toggleLabel    = document.getElementById("toggleLabel");
+const ovStart        = document.getElementById("ovStart");
+const fsBtn          = document.getElementById("fsBtn");
+const receptionBtn   = document.getElementById("receptionBtn");
 const exitReceptionBtn = document.getElementById("exitReceptionBtn");
-const videoWrap = document.getElementById("videoWrap");
-const overlay = document.getElementById("streamOverlay");
+const videoWrap      = document.getElementById("videoWrap");
+const overlay        = document.getElementById("streamOverlay");
 
-let running = false;
-let busy = false;
+let running     = false;
+let busy        = false;
+let currentMode = "fr";   // "fr" | "od"
+
+// ------------------------------------------------------- mode switching
+async function switchMode(mode) {
+  if (mode === currentMode) return;
+  const prevMode = currentMode;
+  currentMode = mode;
+  applyModeUI();
+  const r = await API.post("/api/mode", { mode });
+  if (!r.success) {
+    currentMode = prevMode;
+    applyModeUI();
+    toast(r.message || "Could not switch mode", "err");
+    return;
+  }
+  toast(mode === "od" ? "Object Detection mode" : "Face Recognition mode", "ok");
+  refresh();
+}
+
+function applyModeUI() {
+  const isFR = currentMode === "fr";
+  // Mode buttons
+  document.getElementById("modeFR").classList.toggle("active", isFR);
+  document.getElementById("modeOD").classList.toggle("active", !isFR);
+  // KPI grids
+  document.getElementById("frKpis").style.display     = isFR ? "" : "none";
+  document.getElementById("odKpis").style.display     = isFR ? "none" : "";
+  // Status rows
+  document.getElementById("frStatusRows").style.display = isFR ? "" : "none";
+  document.getElementById("odStatusRows").style.display = isFR ? "none" : "";
+  // Bottom cards
+  document.getElementById("deptCard").style.display   = isFR ? "" : "none";
+  document.getElementById("classCard").style.display  = isFR ? "none" : "";
+  // Analytics strip
+  document.getElementById("frStrip").style.display    = isFR ? "" : "none";
+  document.getElementById("odStrip").style.display    = isFR ? "none" : "";
+  // Dash title
+  document.getElementById("dashTitle").textContent = isFR
+    ? "AI Reception Monitoring"
+    : "Object Detection";
+  document.getElementById("dashSub").textContent = isFR
+    ? "Real-time person detection, face recognition & activity"
+    : "Real-time multi-class object detection & tracking";
+}
+
+async function loadInitialMode() {
+  try {
+    const r = await API.get("/api/mode");
+    if (r.success && r.data && r.data.mode) {
+      currentMode = r.data.mode;
+      applyModeUI();
+    }
+  } catch (e) {}
+}
 
 // ------------------------------------------------------- start/stop toggle
 async function startDetection() {
@@ -33,11 +85,19 @@ async function stopDetection() {
 }
 function onToggle() { running ? stopDetection() : startDetection(); }
 toggleBtn.onclick = onToggle;
-ovStart.onclick = startDetection;
+ovStart.onclick   = startDetection;
 
 function setToggle(state) {
-  if (state === "starting") { toggleBtn.className = "btn secondary toggle-btn"; toggleLabel.textContent = "Starting…"; toggleBtn.querySelector(".t-ico").textContent = "…"; return; }
-  if (state === "stopping") { toggleBtn.className = "btn secondary toggle-btn"; toggleLabel.textContent = "Stopping…"; toggleBtn.querySelector(".t-ico").textContent = "…"; return; }
+  if (state === "starting") {
+    toggleBtn.className = "btn secondary toggle-btn";
+    toggleLabel.textContent = "Starting…";
+    toggleBtn.querySelector(".t-ico").textContent = "…"; return;
+  }
+  if (state === "stopping") {
+    toggleBtn.className = "btn secondary toggle-btn";
+    toggleLabel.textContent = "Stopping…";
+    toggleBtn.querySelector(".t-ico").textContent = "…"; return;
+  }
   if (running) {
     toggleBtn.className = "btn danger toggle-btn";
     toggleBtn.querySelector(".t-ico").textContent = "■";
@@ -60,27 +120,78 @@ document.addEventListener("fullscreenchange", () =>
 
 // ------------------------------------------------------- reception mode
 function enterReception() { document.body.classList.add("reception"); exitReceptionBtn.style.display = "block"; }
-function exitReception() { document.body.classList.remove("reception"); exitReceptionBtn.style.display = "none"; }
-receptionBtn.onclick = enterReception;
+function exitReception()  { document.body.classList.remove("reception"); exitReceptionBtn.style.display = "none"; }
+receptionBtn.onclick  = enterReception;
 exitReceptionBtn.onclick = exitReception;
 document.addEventListener("keydown", e => { if (e.key === "Escape") exitReception(); });
 
 // ------------------------------------------------------- overlay states
 function setOverlay(status) {
   const map = {
-    no_source: { show: true, icon: "⏻", title: "Detection Stopped", sub: "Press start to begin live monitoring", start: true },
-    lost:      { show: true, icon: "⚠", title: "Camera Lost", sub: "Reconnecting to the camera…", start: false },
-    connecting:{ show: true, icon: "◌", title: "Connecting…", sub: "Opening the camera stream", start: false },
-    connected: { show: false },
+    no_source:  { show: true, icon: "⏻", title: "Detection Stopped", sub: "Press start to begin live monitoring", start: true },
+    lost:       { show: true, icon: "⚠", title: "Camera Lost", sub: "Reconnecting to the camera…", start: false },
+    connecting: { show: true, icon: "◌", title: "Connecting…", sub: "Opening the camera stream", start: false },
+    connected:  { show: false },
   };
   const s = map[status] || map.no_source;
   overlay.style.display = s.show ? "flex" : "none";
   if (s.show) {
-    document.getElementById("ovIcon").textContent = s.icon;
+    document.getElementById("ovIcon").textContent  = s.icon;
     document.getElementById("ovTitle").textContent = s.title;
-    document.getElementById("ovSub").textContent = s.sub;
+    document.getElementById("ovSub").textContent   = s.sub;
     ovStart.style.display = s.start ? "inline-flex" : "none";
   }
+}
+
+// ------------------------------------------------------- FR stats update
+function updateFRStats(s) {
+  const people = s.people_count ?? 0, rec = s.recognized_count ?? 0, guest = s.guest_count ?? 0;
+  setText("cPeople",    people); setText("sPeople", people);
+  setText("cRecognized", rec);   setText("sRec",    rec);
+  setText("cGuests",    guest);  setText("sGuest",  guest);
+}
+
+// ------------------------------------------------------- OD stats update
+function updateODStats(s) {
+  const total = s.total_objects ?? 0, types = s.unique_classes ?? 0;
+  setText("cObjects", total);  setText("sObjects", total);
+  setText("cTypes",   types);  setText("sTypes",   types);
+  setText("cOdFps",  (s.fps ?? 0).toFixed ? (s.fps ?? 0).toFixed(1) : s.fps);
+
+  // Class counts breakdown
+  const counts = s.class_counts || {};
+  const el = document.getElementById("classCounts");
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    el.innerHTML = '<div class="help">No objects detected yet.</div>';
+  } else {
+    el.innerHTML = entries.map(([name, cnt]) => {
+      const colors = ["#3b82f6","#22c55e","#f59e0b","#ef4444","#8b5cf6",
+                      "#06b6d4","#ec4899","#84cc16","#f97316"];
+      const color  = colors[Math.abs(hashStr(name)) % colors.length];
+      return `<div class="dept-stat" style="border-left-color:${color}">
+        <span style="font-size:18px;width:30px;text-align:center;color:${color}">◈</span>
+        <span class="ds-name">${escapeHtml(name)}</span>
+        <span class="ds-count" style="color:${color}">${cnt}</span>
+      </div>`;
+    }).join("");
+  }
+}
+
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+// ------------------------------------------------------- OD enabled classes count
+async function loadEnabledClassCount() {
+  try {
+    const r = await API.get("/api/object/classes");
+    if (!r.success) return;
+    const count = (r.data.classes || []).filter(c => c.enabled).length;
+    setText("cEnabledClasses", count);
+  } catch (e) {}
 }
 
 // ------------------------------------------------------- poll
@@ -89,29 +200,30 @@ async function refresh() {
   try { s = (await API.get("/api/stats")).data || {}; } catch (e) {}
   try { a = (await API.get("/api/camera/active")).data || {}; } catch (e) {}
 
-  const people = s.people_count ?? 0, rec = s.recognized_count ?? 0,
-        guest = s.guest_count ?? 0, fps = (s.fps ?? 0);
+  const fps    = s.fps ?? 0;
   const fpsTxt = fps.toFixed ? fps.toFixed(1) : fps;
-  setText("cPeople", people); setText("sPeople", people);
-  setText("cRecognized", rec); setText("sRec", rec);
-  setText("cGuests", guest); setText("sGuest", guest);
   setText("cFps", fpsTxt); setText("sFps", fpsTxt);
 
+  if (currentMode === "od") {
+    updateODStats(s);
+  } else {
+    updateFRStats(s);
+  }
+
   const status = s.camera_status || "no_source";
-  const label = { connected: "Running", lost: "Camera Lost", no_source: "Stopped" }[status] || status;
+  const label  = { connected: "Running", lost: "Camera Lost", no_source: "Stopped" }[status] || status;
   setText("sCam", label);
   const cam = document.getElementById("cCam");
-  cam.textContent = label;
-  cam.className = "badge " + (status === "connected" ? "ok" : "bad");
+  cam.textContent  = label;
+  cam.className    = "badge " + (status === "connected" ? "ok" : "bad");
 
   const on = status === "connected";
-  document.getElementById("liveDot").className = "status-dot " + (on ? "on" : "off");
+  document.getElementById("liveDot").className      = "status-dot " + (on ? "on" : "off");
   document.getElementById("liveStatus").textContent =
     on ? "LIVE" : (status === "lost" ? "Camera Lost" : "Stopped");
   document.getElementById("liveBadge").classList.toggle("live", on);
 
-  // Active camera header.
-  if (a.has_source || a.label && a.label !== "None") {
+  if (a.has_source || (a.label && a.label !== "None")) {
     setText("streamCam", a.label || "Camera");
     setText("streamSub", (a.resolution || "") + (a.camera_type ? " · " + a.camera_type.toUpperCase() : ""));
   } else {
@@ -127,7 +239,7 @@ async function refresh() {
   setOverlay(ovState);
 }
 
-// modern SVG department icons (no external libs)
+// ------------------------------------------------------- FR dept stats
 const DEPT_SVG = {
   trending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>',
   code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
@@ -138,7 +250,6 @@ const DEPT_SVG = {
   briefcase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
   tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 11 3.8a2 2 0 0 0-1.4-.6H4a1 1 0 0 0-1 1v5.6a2 2 0 0 0 .6 1.4l9.6 9.6a2 2 0 0 0 2.8 0l4.6-4.6a2 2 0 0 0 0-2.8z"/><circle cx="7.5" cy="7.5" r="1"/></svg>',
 };
-
 let deptCatalog = [];
 async function loadDeptCatalog() {
   try { deptCatalog = ((await API.get("/api/departments")).data || {}).departments || []; } catch (e) {}
@@ -147,13 +258,10 @@ function deptMeta(name) {
   const d = deptCatalog.find(x => x.name.toLowerCase() === (name || "").toLowerCase());
   return d || { color: "#64748B", icon: "tag" };
 }
-
 async function loadEnrolled() {
   let people = [];
   try { people = (await API.get("/api/people")).data || []; } catch (e) {}
   setText("cEnrolled", people.length);
-
-  // Group enrolled people by department.
   const counts = {};
   people.forEach(p => { const d = p.department || "Other"; counts[d] = (counts[d] || 0) + 1; });
   const el = document.getElementById("deptStats");
@@ -173,6 +281,15 @@ async function loadEnrolled() {
 function escapeHtml(s) { return (s || "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
 function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
 
-(async () => { await loadDeptCatalog(); refresh(); loadEnrolled(); })();
+(async () => {
+  await loadInitialMode();
+  await loadDeptCatalog();
+  refresh();
+  loadEnrolled();
+  if (currentMode === "od") loadEnabledClassCount();
+})();
 setInterval(refresh, 1200);
-setInterval(loadEnrolled, 5000);
+setInterval(() => {
+  if (currentMode === "fr") loadEnrolled();
+  else loadEnabledClassCount();
+}, 5000);

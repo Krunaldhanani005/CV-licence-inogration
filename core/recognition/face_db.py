@@ -170,6 +170,26 @@ class FaceDatabase:
             return np.load(path)
         return None
 
+    def set_image_embedding(self, person_id: str, filename: str, embedding: np.ndarray) -> None:
+        """Store per-image embedding at <embeddings_dir>/<person_id>/<filename>.npy."""
+        d = os.path.join(self.embeddings_dir, person_id)
+        os.makedirs(d, exist_ok=True)
+        np.save(os.path.join(d, f"{filename}.npy"), np.asarray(embedding, dtype=np.float32))
+
+    def get_image_embeddings(self, person_id: str) -> List[np.ndarray]:
+        """Return list of per-image embeddings from <embeddings_dir>/<person_id>/."""
+        d = os.path.join(self.embeddings_dir, person_id)
+        if not os.path.isdir(d):
+            return []
+        result = []
+        for fn in sorted(os.listdir(d)):
+            if fn.endswith(".npy"):
+                try:
+                    result.append(np.load(os.path.join(d, fn)))
+                except Exception:
+                    pass
+        return result
+
     def delete(self, person_id: str) -> bool:
         import shutil
 
@@ -178,8 +198,9 @@ class FaceDatabase:
                 return False
             del self._people[person_id]
             self._save()
-        # Remove face images + embedding file.
+        # Remove face images + embedding files (both old flat .npy and new per-image dir).
         shutil.rmtree(os.path.join(self.faces_dir, person_id), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.embeddings_dir, person_id), ignore_errors=True)
         emb = os.path.join(self.embeddings_dir, f"{person_id}.npy")
         if os.path.exists(emb):
             os.remove(emb)
@@ -188,16 +209,28 @@ class FaceDatabase:
 
     # ------------------------------------------------------- index materials
     def all_embeddings(self) -> Tuple[List[str], Optional[np.ndarray]]:
-        """Return ``(person_ids, embeddings)`` for people that have embeddings."""
+        """Return ``(person_ids, embeddings)`` — one row per image embedding.
+
+        Uses per-image embeddings from ``<embeddings_dir>/<person_id>/`` if
+        present; falls back to the old single averaged ``.npy`` otherwise so
+        existing enrollments continue to work until re-enrolled.
+        """
         ids: List[str] = []
         vecs: List[np.ndarray] = []
         with self._lock:
             person_ids = list(self._people.keys())
         for pid in person_ids:
-            emb = self.get_embedding(pid)
-            if emb is not None:
-                ids.append(pid)
-                vecs.append(emb.reshape(-1))
+            per_image = self.get_image_embeddings(pid)
+            if per_image:
+                for emb in per_image:
+                    ids.append(pid)
+                    vecs.append(emb.reshape(-1))
+            else:
+                # Backward compat: old single averaged .npy
+                emb = self.get_embedding(pid)
+                if emb is not None:
+                    ids.append(pid)
+                    vecs.append(emb.reshape(-1))
         if not vecs:
             return [], None
         return ids, np.vstack(vecs).astype(np.float32)

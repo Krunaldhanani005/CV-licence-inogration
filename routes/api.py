@@ -17,7 +17,12 @@ api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 # --------------------------------------------------------------------- helpers
 def _pipeline():
-    return current_app.config["PIPELINE"]
+    """Return whichever pipeline is currently active (FR or OD)."""
+    return current_app.config["MODE_MANAGER"].pipeline()
+
+
+def _mode_manager():
+    return current_app.config["MODE_MANAGER"]
 
 
 def _people():
@@ -38,6 +43,22 @@ def _ok(data=None, **extra):
 
 def _err(message: str, status: int = 400):
     return jsonify({"success": False, "message": message}), status
+
+
+# ------------------------------------------------------------------ mode switch
+@api_bp.route("/mode", methods=["GET"])
+def mode_get():
+    return _ok({"mode": _mode_manager().mode})
+
+
+@api_bp.route("/mode", methods=["POST"])
+def mode_switch():
+    body = request.get_json(silent=True) or {}
+    mode = str(body.get("mode", "")).strip()
+    if mode not in ("fr", "od"):
+        return _err("mode must be 'fr' or 'od'")
+    result = _mode_manager().switch(mode)
+    return jsonify(result), (200 if result["success"] else 400)
 
 
 # ------------------------------------------------------------------ live feed
@@ -294,6 +315,41 @@ def people_image(person_id: str, filename: str):
     faces_dir = _settings().path("faces_dir")
     directory = os.path.join(faces_dir, person_id)
     return send_from_directory(directory, filename)
+
+
+@api_bp.route("/people/<person_id>/reenroll", methods=["POST"])
+def people_reenroll(person_id: str):
+    svc = _people()
+    record = svc.get_person(person_id)
+    if not record:
+        return _err("Person not found", 404)
+    # Force re-computation: remove cached per-image embeddings so enroll_person reprocesses all
+    import shutil
+    emb_dir = os.path.join(svc.recognizer.db.embeddings_dir, person_id)
+    shutil.rmtree(emb_dir, ignore_errors=True)
+    used, total = svc.recognizer.enroll_person(person_id)
+    svc.recognizer.refresh_index()
+    _pipeline().reload_recognition()
+    return _ok({"encoded_faces": used, "total_images": total},
+               message=f"{used}/{total} face(s) encoded")
+
+
+@api_bp.route("/people/reenroll-all", methods=["POST"])
+def people_reenroll_all():
+    svc = _people()
+    import shutil
+    results = []
+    for person in svc.list_people():
+        pid = person["id"]
+        # Remove per-image cache to force full reprocessing
+        emb_dir = os.path.join(svc.recognizer.db.embeddings_dir, pid)
+        shutil.rmtree(emb_dir, ignore_errors=True)
+        used, total = svc.recognizer.enroll_person(pid)
+        results.append({"id": pid, "name": person["name"], "encoded": used, "total": total})
+    svc.recognizer.refresh_index()
+    _pipeline().reload_recognition()
+    total_ok = sum(1 for r in results if r["encoded"] == r["total"])
+    return _ok(results, message=f"Re-encoded {len(results)} people — {total_ok} fully encoded")
 
 
 # ------------------------------------------------------------ system settings

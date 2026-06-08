@@ -52,6 +52,7 @@ class FaceRecognizer:
         )
         self.index = FaissIndex(dim=_EMBED_DIM, index_dir=settings.path("faiss_dir"))
         self._app = None
+        self._enroll_app = None
         self._load_model()
         self.refresh_index()
 
@@ -67,7 +68,16 @@ class FaceRecognizer:
             providers=["CPUExecutionProvider"],
         )
         self._app.prepare(ctx_id=-1, det_size=(self.det_size, self.det_size))
-        logger.info("InsightFace ready")
+
+        # Second detector tuned for enrollment photos (close-ups, phone shots).
+        # det_size=960 misses faces that fill the frame; 480 handles them correctly.
+        self._enroll_app = FaceAnalysis(
+            name=self.model_name,
+            root=root,
+            providers=["CPUExecutionProvider"],
+        )
+        self._enroll_app.prepare(ctx_id=-1, det_size=(480, 480))
+        logger.info("InsightFace ready (live det=%d, enroll det=480)", self.det_size)
 
     # -------------------------------------------------------------- detect
     def detect_faces(self, image: np.ndarray):
@@ -81,8 +91,43 @@ class FaceRecognizer:
         with self._infer_lock:
             return self._app.get(image)
 
+    def _detect_for_enroll(self, image: np.ndarray):
+        """Try primary detector first; fall back to 480-det for close-up / phone photos."""
+        with self._infer_lock:
+            faces = self._app.get(image)
+            if not faces and self._enroll_app is not None:
+                faces = self._enroll_app.get(image)
+        return faces
+
+    @staticmethod
+    def _read_with_exif(path: str) -> Optional[np.ndarray]:
+        """Read an image and apply EXIF orientation (phone photos are often rotated)."""
+        try:
+            from PIL import Image as PILImage, ExifTags
+            with PILImage.open(path) as pil:
+                pil = pil.convert("RGB")
+                try:
+                    exif = pil._getexif()  # noqa: SLF001
+                    if exif:
+                        orient_key = next(
+                            k for k, v in ExifTags.TAGS.items() if v == "Orientation"
+                        )
+                        orientation = exif.get(orient_key)
+                        if orientation == 3:
+                            pil = pil.rotate(180, expand=True)
+                        elif orientation == 6:
+                            pil = pil.rotate(270, expand=True)
+                        elif orientation == 8:
+                            pil = pil.rotate(90, expand=True)
+                except Exception:
+                    pass
+                return cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+        except Exception:
+            return cv2.imread(path)
+
     def _largest_embedding(self, image: np.ndarray) -> Optional[np.ndarray]:
-        faces = self.detect_faces(image)
+        """Extract embedding using enrollment-aware detection (480+960 dual-pass)."""
+        faces = self._detect_for_enroll(image)
         if not faces:
             return None
         face = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
@@ -127,39 +172,50 @@ class FaceRecognizer:
 
     # ------------------------------------------------------------ enrollment
     def enroll_person(self, person_id: str) -> Tuple[int, int]:
-        """Recompute a person's averaged embedding from their stored photos.
+        """Compute and cache per-image embeddings; only new images are processed.
 
-        Returns ``(used_images, total_images)``.
+        Existing per-image ``.npy`` files are reused so adding a 4th image
+        never recomputes the first three embeddings.  Returns
+        ``(used_images, total_images)``.
         """
         record = self.db.get(person_id)
         if not record:
             return 0, 0
         person_dir = self.db.person_dir(person_id)
-        embeddings: List[np.ndarray] = []
         images = record.get("images", [])
+        image_set = set(images)
+        used = 0
+
         for filename in images:
+            emb_path = os.path.join(self.db.embeddings_dir, person_id, f"{filename}.npy")
+            if os.path.exists(emb_path):
+                used += 1
+                continue  # Already cached — skip re-computation
             path = os.path.join(person_dir, filename)
-            image = cv2.imread(path)
+            image = self._read_with_exif(path)  # EXIF-corrected load
             if image is None:
                 logger.warning("Could not read enrollment image: %s", path)
                 continue
             emb = self._largest_embedding(image)
             if emb is not None:
-                embeddings.append(emb)
+                self.db.set_image_embedding(person_id, filename, emb)
+                used += 1
             else:
-                logger.warning("No face found in %s", path)
+                logger.warning("No face found in %s — stored but not embedded", path)
 
-        if not embeddings:
-            logger.warning("No usable faces for person %s", person_id)
-            self.db.set_embedding_count(person_id, 0)
-            return 0, len(images)
+        # Remove cached embeddings for images that have been deleted
+        emb_dir = os.path.join(self.db.embeddings_dir, person_id)
+        if os.path.isdir(emb_dir):
+            for npy_fn in os.listdir(emb_dir):
+                if npy_fn.endswith(".npy") and npy_fn[:-4] not in image_set:
+                    try:
+                        os.remove(os.path.join(emb_dir, npy_fn))
+                    except OSError:
+                        pass
 
-        avg = np.mean(np.vstack(embeddings), axis=0)
-        avg = avg / (np.linalg.norm(avg) or 1.0)
-        self.db.set_embedding(person_id, avg.astype(np.float32))
-        self.db.set_embedding_count(person_id, len(embeddings))
-        logger.info("Enrolled %s using %d/%d image(s)", person_id, len(embeddings), len(images))
-        return len(embeddings), len(images)
+        self.db.set_embedding_count(person_id, used)
+        logger.info("Enrolled %s: %d/%d image(s) have embeddings", person_id, used, len(images))
+        return used, len(images)
 
     def refresh_index(self) -> None:
         """Rebuild the FAISS index from all stored averaged embeddings."""

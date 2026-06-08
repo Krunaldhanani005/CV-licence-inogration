@@ -6,10 +6,19 @@
   <!-- ============ control bar ============ -->
   <div class="dash-bar">
     <div>
-      <div class="dash-title">AI Reception Monitoring</div>
-      <div class="help">Real-time person detection, face recognition &amp; activity</div>
+      <div class="dash-title" id="dashTitle">AI Reception Monitoring</div>
+      <div class="help" id="dashSub">Real-time person detection, face recognition &amp; activity</div>
     </div>
     <div class="dash-actions">
+      <!-- Mode selector -->
+      <div class="mode-toggle" id="modeToggle">
+        <button id="modeFR" class="mode-btn active" onclick="switchMode('fr')">
+          <span>☺</span> Face Recognition
+        </button>
+        <button id="modeOD" class="mode-btn" onclick="switchMode('od')">
+          <span>◈</span> Object Detection
+        </button>
+      </div>
       <button id="toggleBtn" class="btn green toggle-btn">
         <span class="t-ico">▶</span><span id="toggleLabel">Start Detection</span>
       </button>
@@ -38,7 +47,6 @@
       <div class="video-wrap" id="videoWrap">
         <img id="feed" src="/api/video_feed" alt="Live detection stream" />
 
-        <!-- HTML overlay for non-running states (clean, no baked-in text) -->
         <div class="stream-overlay" id="streamOverlay">
           <div class="ov-icon" id="ovIcon">⏻</div>
           <div class="ov-title" id="ovTitle">Detection Stopped</div>
@@ -46,11 +54,19 @@
           <button class="btn green ov-start" id="ovStart">▶ Start Detection</button>
         </div>
 
-        <!-- analytics strip (reception / fullscreen) -->
-        <div class="analytics-strip">
-          <div><span class="s-label">People</span><span class="s-val" id="sPeople">0</span></div>
-          <div><span class="s-label">Recognized</span><span class="s-val" id="sRec">0</span></div>
-          <div><span class="s-label">Guests</span><span class="s-val" id="sGuest">0</span></div>
+        <!-- analytics strip -->
+        <div class="analytics-strip" id="analyticsStrip">
+          <!-- FR strip -->
+          <div id="frStrip">
+            <div><span class="s-label">People</span><span class="s-val" id="sPeople">0</span></div>
+            <div><span class="s-label">Recognized</span><span class="s-val" id="sRec">0</span></div>
+            <div><span class="s-label">Guests</span><span class="s-val" id="sGuest">0</span></div>
+          </div>
+          <!-- OD strip -->
+          <div id="odStrip" style="display:none">
+            <div><span class="s-label">Objects</span><span class="s-val" id="sObjects">0</span></div>
+            <div><span class="s-label">Types</span><span class="s-val" id="sTypes">0</span></div>
+          </div>
           <div><span class="s-label">FPS</span><span class="s-val" id="sFps">0.0</span></div>
           <div><span class="s-label">Camera</span><span class="s-val" id="sCam">—</span></div>
         </div>
@@ -65,9 +81,10 @@
       </div>
     </div>
 
-    <!-- side panel: KPI tiles + system status -->
+    <!-- side panel -->
     <aside class="dash-side">
-      <div class="kpi-grid">
+      <!-- FR KPIs -->
+      <div id="frKpis" class="kpi-grid">
         <div class="kpi blue">
           <div class="kpi-ico">☺</div>
           <div class="kpi-val" id="cPeople">0</div>
@@ -90,6 +107,26 @@
         </div>
       </div>
 
+      <!-- OD KPIs (hidden until OD mode) -->
+      <div id="odKpis" class="kpi-grid" style="display:none">
+        <div class="kpi blue">
+          <div class="kpi-ico">◈</div>
+          <div class="kpi-val" id="cObjects">0</div>
+          <div class="kpi-lab">Objects</div>
+        </div>
+        <div class="kpi green">
+          <div class="kpi-ico">⬡</div>
+          <div class="kpi-val" id="cTypes">0</div>
+          <div class="kpi-lab">Types</div>
+        </div>
+        <div class="kpi violet">
+          <div class="kpi-ico">⚡</div>
+          <div class="kpi-val" id="cOdFps">0.0</div>
+          <div class="kpi-lab">FPS</div>
+        </div>
+      </div>
+
+      <!-- System Status -->
       <div class="card status-card">
         <div class="section-title">System Status</div>
         <div class="status-row">
@@ -97,16 +134,34 @@
           <span class="badge bad" id="cCam">Stopped</span>
         </div>
         <div class="status-row"><span class="label">Detector</span><span class="badge ok">YOLOv8n</span></div>
-        <div class="status-row"><span class="label">Recognition</span><span class="badge ok">InsightFace + FAISS</span></div>
-        <div class="status-row"><span class="label">Tracking</span><span class="badge ok">ByteTrack</span></div>
-        <div class="status-row"><span class="label">Activity</span><span class="badge ok">MediaPipe Pose</span></div>
-        <div class="status-row"><span class="label">Enrolled People</span><span id="cEnrolled">—</span></div>
+        <!-- FR-specific rows -->
+        <div id="frStatusRows">
+          <div class="status-row"><span class="label">Recognition</span><span class="badge ok">InsightFace + FAISS</span></div>
+          <div class="status-row"><span class="label">Tracking</span><span class="badge ok">ByteTrack</span></div>
+          <div class="status-row"><span class="label">Activity</span><span class="badge ok">MediaPipe Pose</span></div>
+          <div class="status-row"><span class="label">Enrolled People</span><span id="cEnrolled">—</span></div>
+        </div>
+        <!-- OD-specific rows -->
+        <div id="odStatusRows" style="display:none">
+          <div class="status-row"><span class="label">Tracking</span><span class="badge ok">ByteTrack</span></div>
+          <div class="status-row"><span class="label">Mode</span><span class="badge ok">Multi-Class YOLO</span></div>
+          <div class="status-row"><span class="label">Enabled Classes</span><span id="cEnabledClasses">—</span></div>
+        </div>
       </div>
 
-      <div class="card">
+      <!-- FR: Department stats -->
+      <div class="card" id="deptCard">
         <div class="section-title">Department Statistics</div>
         <div class="dept-stats" id="deptStats">
           <div class="help">No employees enrolled yet.</div>
+        </div>
+      </div>
+
+      <!-- OD: Class counts -->
+      <div class="card" id="classCard" style="display:none">
+        <div class="section-title">Detected Objects</div>
+        <div class="dept-stats" id="classCounts">
+          <div class="help">No objects detected yet.</div>
         </div>
       </div>
     </aside>

@@ -24,3 +24,13 @@ def people():
 @pages_bp.route("/settings")
 def settings():
     return render_template("settings.html", active="settings")
+
+
+@pages_bp.route("/object-settings")
+def object_settings():
+    return render_template("object_settings.html", active="object_settings")
+
+
+@pages_bp.route("/custom-objects")
+def custom_objects():
+    return render_template("custom_objects.html", active="custom_objects")

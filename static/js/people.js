@@ -70,20 +70,27 @@ function personRow(p) {
   const deptChip = p.department
     ? `<span class="dept-chip"><span class="dot" style="background:${color}"></span>${escapeHtml(p.department)}</span>`
     : `<span class="help">—</span>`;
+  const allEncoded = p.embedding_count >= p.image_count && p.embedding_count > 0;
   const emb = p.embedding_count > 0
-    ? `<span class="badge ok">${p.embedding_count} encoded</span>`
+    ? `<span class="badge ${allEncoded ? 'ok' : 'warn'}">${p.embedding_count} encoded</span>`
     : `<span class="badge bad">none</span>`;
+  const reencodeBtn = !allEncoded && p.image_count > 0
+    ? `<button class="btn secondary sm" data-reencode title="Re-detect faces in all ${p.image_count} photos">Re-encode</button>`
+    : "";
   tr.innerHTML = `
     <td><div class="row-name">${avatar}<span>${escapeHtml(p.name)}</span></div></td>
     <td>${deptChip}</td>
     <td>${p.image_count}</td>
     <td>${emb}</td>
     <td style="text-align:right;">
+      ${reencodeBtn}
       <button class="btn secondary sm" data-edit>Edit</button>
       <button class="btn danger sm" data-del>Delete</button>
     </td>`;
   tr.querySelector("[data-edit]").onclick = () => editPerson(p.id);
   tr.querySelector("[data-del]").onclick = () => delPerson(p.id, p.name);
+  const reBtn = tr.querySelector("[data-reencode]");
+  if (reBtn) reBtn.onclick = () => reencodePerson(p.id, p.name, reBtn);
   return tr;
 }
 
@@ -119,6 +126,23 @@ async function delPerson(id, name) {
   toast(r.message || "Deleted", r.success ? "ok" : "err");
   if (r.success) loadPeople();
 }
+
+async function reencodePerson(id, name, btn) {
+  btn.disabled = true; btn.textContent = "Re-encoding…";
+  const r = await API.post(`/api/people/${id}/reenroll`);
+  btn.disabled = false; btn.textContent = "Re-encode";
+  toast(`${name}: ${r.message || (r.success ? "Done" : "Error")}`, r.success ? "ok" : "err");
+  if (r.success) loadPeople();
+}
+
+document.getElementById("reencodeAllBtn").onclick = async () => {
+  const btn = document.getElementById("reencodeAllBtn");
+  btn.disabled = true; btn.textContent = "Re-encoding…";
+  const r = await API.post("/api/people/reenroll-all");
+  btn.disabled = false; btn.textContent = "Re-encode All";
+  toast(r.message || (r.success ? "Done" : "Error"), r.success ? "ok" : "err");
+  if (r.success) loadPeople();
+};
 
 document.getElementById("clearAllBtn").onclick = async () => {
   if (!confirm("Remove ALL enrolled people, embeddings and rebuild the index? This cannot be undone.")) return;

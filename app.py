@@ -17,7 +17,8 @@ from flask import Flask
 from config import get_settings
 from core.utils import setup_logging, get_logger
 from routes import api_bp, pages_bp
-from services import MonitoringPipeline, PersonService
+from routes.object_api import object_bp
+from services import MonitoringPipeline, PersonService, ObjectDetectionPipeline, ModeManager
 
 
 def create_app() -> Flask:
@@ -33,32 +34,37 @@ def create_app() -> Flask:
         static_folder="static",
     )
     app.config["SECRET_KEY"] = settings.get("app", "secret_key", "change-me")
-    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64MB photo uploads
+    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024
     app.config["SETTINGS"] = settings
 
-    # Build the long-lived pipeline + person service (models load here).
-    pipeline = MonitoringPipeline(settings)
+    # Build both pipelines — only one runs at a time (ModeManager controls this).
+    pipeline    = MonitoringPipeline(settings)
+    od_pipeline = ObjectDetectionPipeline(settings)
     person_service = PersonService(pipeline.recognizer)
-    app.config["PIPELINE"] = pipeline
+    mode_manager   = ModeManager(pipeline, od_pipeline)
+
+    app.config["PIPELINE"]     = pipeline        # kept for PersonService wiring
     app.config["PERSON_SERVICE"] = person_service
+    app.config["MODE_MANAGER"] = mode_manager
 
     app.register_blueprint(pages_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(object_bp)
 
-    # Start the capture/inference threads immediately.
-    pipeline.start()
+    # Start the FR pipeline by default (idle — camera not opened yet).
+    mode_manager.fr_pipeline().start()
 
-    # Graceful shutdown.
+    # Graceful shutdown — stop whichever pipeline is currently active.
     def _shutdown(signum, _frame):
         logger.info("Signal %s received — shutting down", signum)
-        pipeline.stop()
+        mode_manager.pipeline().stop()
         sys.exit(0)
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             signal.signal(sig, _shutdown)
         except ValueError:
-            pass  # not in main thread (e.g. under some WSGI servers)
+            pass
 
     logger.info("=== Initialisation complete ===")
     return app
@@ -69,12 +75,11 @@ def main() -> None:
     app = create_app()
     host = settings.get("app", "host", "0.0.0.0")
     port = int(settings.get("app", "port", 5000))
-    # use_reloader=False: avoid loading heavy models twice and killing threads.
     app.run(
-    host="0.0.0.0",
-    port=5000,
-    debug=False
-)
+        host="0.0.0.0",
+        port=5000,
+        debug=False
+    )
 
 if __name__ == "__main__":
     main()

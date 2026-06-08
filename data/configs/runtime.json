@@ -16,7 +16,7 @@
   "recognition": {
     "threshold": 0.4,
     "recognition_interval": 15,
-    "min_face_size": 20,
+    "min_face_size": 15,
     "recognize_max_attempts": 1,
     "cache_seconds": 40,
     "revalidation_interval": 60,

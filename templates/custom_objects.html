@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Custom Objects{% endblock %}
+{% block heading %}Custom Objects{% endblock %}
+{% block content %}
+<div style="max-width:960px;display:grid;gap:20px;">
+
+  <!-- Header + add button -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+    <div>
+      <p class="help" style="margin:0;">
+        Store reference images for custom objects (robots, branded equipment, etc.).<br>
+        Future releases will use these images to train a custom detection model.
+      </p>
+    </div>
+    <button class="btn green" onclick="showForm()">+ Add Custom Object</button>
+  </div>
+
+  <!-- Add form (hidden by default) -->
+  <div class="card" id="addForm" style="display:none">
+    <div class="section-title">New Custom Object</div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Object Name *</label>
+        <input id="objName" type="text" placeholder="e.g. Keenon T10" />
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <input id="objDesc" type="text" placeholder="Optional description" />
+      </div>
+      <div class="field full">
+        <label>Reference Images (jpg / png)</label>
+        <input id="objImages" type="file" multiple accept=".jpg,.jpeg,.png"
+               style="background:var(--panel-2);border:1px solid var(--border);
+                      padding:10px;border-radius:8px;color:var(--text);" />
+        <span class="help">Upload 3–10 clear photos from different angles for best results later.</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn green" onclick="saveObject()">Save Object</button>
+      <button class="btn secondary" onclick="hideForm()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Object list -->
+  <div id="objectList">
+    <div class="help">Loading…</div>
+  </div>
+</div>
+
+<style>
+.obj-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+.obj-icon {
+  width: 48px; height: 48px; border-radius: 12px;
+  background: rgba(59,130,246,.15); color: #60a5fa;
+  display: grid; place-items: center; font-size: 22px; flex-shrink: 0;
+}
+.obj-info { flex: 1; min-width: 0; }
+.obj-name { font-weight: 600; font-size: 15px; }
+.obj-meta { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.obj-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 11.5px; background: rgba(245,158,11,.15); color: #fbbf24;
+  margin-top: 6px;
+}
+.obj-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.img-thumb-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.img-thumb {
+  position: relative; width: 64px; height: 64px; border-radius: 8px;
+  overflow: hidden; border: 1px solid var(--border); flex-shrink: 0;
+}
+.img-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.img-del {
+  position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.7);
+  color: #fff; border: none; border-radius: 4px; cursor: pointer;
+  font-size: 11px; padding: 1px 4px; line-height: 1.4;
+}
+</style>
+
+<script>
+function showForm() {
+  document.getElementById("addForm").style.display = "block";
+  document.getElementById("objName").focus();
+}
+function hideForm() {
+  document.getElementById("addForm").style.display = "none";
+  document.getElementById("objName").value = "";
+  document.getElementById("objDesc").value = "";
+  document.getElementById("objImages").value = "";
+}
+
+async function loadObjects() {
+  const r = await API.get("/api/object/custom");
+  const list = document.getElementById("objectList");
+  if (!r.success || !r.data || !r.data.length) {
+    list.innerHTML = `<div class="card" style="text-align:center;padding:32px;color:var(--muted);">
+      No custom objects yet.<br>Click <b>+ Add Custom Object</b> to get started.
+    </div>`;
+    return;
+  }
+  list.innerHTML = r.data.map(obj => renderObj(obj)).join("");
+}
+
+function renderObj(obj) {
+  const imgs = (obj.images || []).slice(0, 6).map(img => `
+    <div class="img-thumb">
+      <img src="/api/object/custom/${obj.id}/images/${encodeURIComponent(img)}"
+           alt="${escapeHtml(img)}" />
+      <button class="img-del" onclick="deleteImage('${obj.id}','${img}')"
+              title="Remove image">✕</button>
+    </div>`).join("");
+  const more = (obj.image_count || 0) > 6
+    ? `<div style="align-self:center;color:var(--muted);font-size:12px;">+${obj.image_count - 6} more</div>` : "";
+  return `
+    <div class="obj-card" id="obj_${obj.id}">
+      <div class="obj-icon">★</div>
+      <div class="obj-info" style="flex:1;">
+        <div class="obj-name">${escapeHtml(obj.name)}</div>
+        <div class="obj-meta">${escapeHtml(obj.description || "No description")} · ${obj.image_count || 0} image${obj.image_count !== 1 ? 's' : ''}</div>
+        <div class="obj-badge">⏳ Stored — training not yet available</div>
+        ${imgs || more ? `<div class="img-thumb-row">${imgs}${more}</div>` : ""}
+      </div>
+      <div class="obj-actions">
+        <label class="btn sm secondary" style="cursor:pointer;" title="Add more images">
+          + Images
+          <input type="file" multiple accept=".jpg,.jpeg,.png" style="display:none"
+                 onchange="addImages('${obj.id}', this)" />
+        </label>
+        <button class="btn sm danger" onclick="deleteObject('${obj.id}','${escapeHtml(obj.name)}')">Delete</button>
+      </div>
+    </div>`;
+}
+
+async function saveObject() {
+  const name = document.getElementById("objName").value.trim();
+  if (!name) { toast("Object name is required", "err"); return; }
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("description", document.getElementById("objDesc").value.trim());
+  const files = document.getElementById("objImages").files;
+  for (const f of files) fd.append("images", f);
+  const r = await fetch("/api/object/custom", { method: "POST", body: fd });
+  const data = await r.json();
+  toast(data.message || (data.success ? "Saved" : "Error"), data.success ? "ok" : "err");
+  if (data.success) { hideForm(); loadObjects(); }
+}
+
+async function addImages(objId, input) {
+  const fd = new FormData();
+  for (const f of input.files) fd.append("images", f);
+  fd.append("name", "_update_");
+  const r = await fetch(`/api/object/custom/${objId}/add-images`, { method: "POST", body: fd });
+  // Fallback: re-create with additional images by patching the existing object
+  // For now just reload — the user can also delete + re-add
+  toast("Images upload — please use Delete + Re-add to update images for now", "err");
+  loadObjects();
+}
+
+async function deleteImage(objId, filename) {
+  if (!confirm(`Remove this image?`)) return;
+  const r = await API.delete(`/api/object/custom/${objId}/images/${encodeURIComponent(filename)}`);
+  toast(r.message || (r.success ? "Removed" : "Error"), r.success ? "ok" : "err");
+  if (r.success) loadObjects();
+}
+
+async function deleteObject(objId, name) {
+  if (!confirm(`Delete custom object "${name}" and all its images?`)) return;
+  const r = await API.delete(`/api/object/custom/${objId}`);
+  toast(r.message || (r.success ? "Deleted" : "Error"), r.success ? "ok" : "err");
+  if (r.success) loadObjects();
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+}
+
+// Extend API helper for DELETE
+API.delete = async (url) => {
+  try {
+    const r = await fetch(url, { method: "DELETE" });
+    return await r.json();
+  } catch { return { success: false, message: "Request failed" }; }
+};
+
+loadObjects();
+</script>
+{% endblock %}

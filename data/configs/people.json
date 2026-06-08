@@ -20,11 +20,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:19:37",
-    "updated_at": "2026-06-03T14:19:37"
+    "updated_at": "2026-06-08T11:21:51"
   },
   "0f5084741cfa48209f73cd032153f479": {
     "name": "Vaishali",
@@ -33,11 +34,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:21:29",
-    "updated_at": "2026-06-03T14:21:30"
+    "updated_at": "2026-06-06T10:19:12"
   },
   "52e9b29801fb43c7a9bb25ddcd4b4a55": {
     "name": "Parin",
@@ -46,11 +48,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:22:35",
-    "updated_at": "2026-06-03T14:22:35"
+    "updated_at": "2026-06-06T10:19:42"
   },
   "cea410b4565146599a4476729adb158a": {
     "name": "Naresh",
@@ -59,11 +62,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T14:24:52",
-    "updated_at": "2026-06-03T14:24:52"
+    "updated_at": "2026-06-08T11:21:05"
   },
   "fa72af9fd1c448ef910eb5eb1658b655": {
     "name": "KAKA",
@@ -72,11 +76,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T14:26:07",
-    "updated_at": "2026-06-03T14:26:07"
+    "updated_at": "2026-06-08T11:21:20"
   },
   "cc8aa9d12bae487b912b1df6f4f43118": {
     "name": "Mayank",
@@ -85,11 +90,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:27:05",
-    "updated_at": "2026-06-03T14:27:05"
+    "updated_at": "2026-06-06T10:20:36"
   },
   "43ee3fb01db6466bb82be0eb902ac420": {
     "name": "Manoj",
@@ -98,11 +104,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:28:42",
-    "updated_at": "2026-06-03T14:28:42"
+    "updated_at": "2026-06-06T10:20:46"
   },
   "0e09d2b3f0264019a1d903e78f1ba687": {
     "name": "Alkesh",
@@ -111,11 +118,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:29:03",
-    "updated_at": "2026-06-03T14:29:03"
+    "updated_at": "2026-06-06T10:21:18"
   },
   "f736d459fb0b4dcf844294826951dc75": {
     "name": "Bharat",
@@ -124,11 +132,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:30:08",
-    "updated_at": "2026-06-03T14:30:08"
+    "updated_at": "2026-06-06T10:21:32"
   },
   "f65cf3ee6b324d6b85b047e39886a547": {
     "name": "Prashant",
@@ -137,11 +146,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T14:30:40",
-    "updated_at": "2026-06-03T14:30:41"
+    "updated_at": "2026-06-08T11:20:47"
   },
   "5958b9835d5f448dace312b1aeccac1b": {
     "name": "Khushi",
@@ -150,11 +160,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T14:31:02",
-    "updated_at": "2026-06-03T14:31:02"
+    "updated_at": "2026-06-08T11:20:28"
   },
   "0cec560b4eba45e99d574a055e69c554": {
     "name": "Akshay",
@@ -163,11 +174,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T14:32:49",
-    "updated_at": "2026-06-03T14:32:50"
+    "updated_at": "2026-06-08T11:20:12"
   },
   "d3f1fecf09774a609720703927c326b6": {
     "name": "Shrushti",
@@ -176,11 +188,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:33:08",
-    "updated_at": "2026-06-03T14:33:08"
+    "updated_at": "2026-06-08T11:19:53"
   },
   "e5c8601899f148e593029a18b2cfb699": {
     "name": "Sendhaji",
@@ -205,11 +218,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:35:42",
-    "updated_at": "2026-06-03T14:35:42"
+    "updated_at": "2026-06-08T11:19:34"
   },
   "e953578b6f4c4ffaa9ad42a7eda5f126": {
     "name": "Noor",
@@ -218,11 +232,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:36:03",
-    "updated_at": "2026-06-03T14:36:03"
+    "updated_at": "2026-06-08T11:19:09"
   },
   "2026a8a2bab24ac7868948c65faf1419": {
     "name": "Nikunj",
@@ -231,11 +246,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:37:01",
-    "updated_at": "2026-06-03T14:37:01"
+    "updated_at": "2026-06-08T11:19:00"
   },
   "22653c0ff6854836ac2eac0464e57ecb": {
     "name": "Himanshu",
@@ -244,11 +260,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T14:38:10",
-    "updated_at": "2026-06-03T14:38:10"
+    "updated_at": "2026-06-08T11:18:40"
   },
   "0781d2968cbb4140a1ae216e71281148": {
     "name": "Yashvi",
@@ -257,11 +274,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T14:38:32",
-    "updated_at": "2026-06-03T14:38:32"
+    "updated_at": "2026-06-08T11:18:32"
   },
   "fe83b47c737e4b3080e6a04dc6bb3259": {
     "name": "Om",
@@ -270,11 +288,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:13:56",
-    "updated_at": "2026-06-03T18:13:56"
+    "updated_at": "2026-06-08T11:18:17"
   },
   "2ed326cc04894088959a19abd0cf47e9": {
     "name": "Bhavisha",
@@ -283,11 +302,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
     "embedding_count": 3,
     "created_at": "2026-06-03T18:14:12",
-    "updated_at": "2026-06-03T18:14:12"
+    "updated_at": "2026-06-08T11:17:53"
   },
   "7f18dfe9a4b642cd922790c6d287f4b0": {
     "name": "Manali",
@@ -296,11 +316,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:14:39",
-    "updated_at": "2026-06-03T18:14:39"
+    "updated_at": "2026-06-08T11:17:41"
   },
   "e2a26b89626e44e6a3868a4bd6b15820": {
     "name": "Vraj",
@@ -309,11 +330,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:15:57",
-    "updated_at": "2026-06-03T18:15:58"
+    "updated_at": "2026-06-08T11:17:00"
   },
   "e32b5704ca5d4534bbd4cf54217f1bd5": {
     "name": "Janvi",
@@ -323,11 +345,12 @@
       "face_001.jpeg",
       "face_002.jpeg",
       "face_003.jpeg",
-      "face_004.jpeg"
+      "face_004.jpeg",
+      "face_005.jpg"
     ],
-    "embedding_count": 4,
+    "embedding_count": 5,
     "created_at": "2026-06-03T18:16:25",
-    "updated_at": "2026-06-03T18:16:25"
+    "updated_at": "2026-06-08T11:16:27"
   },
   "0684d98a5d624255a0d2a90daca68279": {
     "name": "Jaimin",
@@ -336,11 +359,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:19:25",
-    "updated_at": "2026-06-03T18:19:25"
+    "updated_at": "2026-06-08T11:16:15"
   },
   "7481a353273c4681a1fd30e4532eae39": {
     "name": "Sumit",
@@ -349,11 +373,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:20:22",
-    "updated_at": "2026-06-03T18:20:23"
+    "updated_at": "2026-06-08T11:14:11"
   },
   "51e764412c294fb99fec6f61ca2ccc11": {
     "name": "Hardik",
@@ -362,11 +387,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:21:45",
-    "updated_at": "2026-06-03T18:21:45"
+    "updated_at": "2026-06-08T11:14:00"
   },
   "471c00a916944722b993bd84d241e7b5": {
     "name": "Maulik",
@@ -375,11 +401,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:22:07",
-    "updated_at": "2026-06-03T18:22:08"
+    "updated_at": "2026-06-08T11:13:28"
   },
   "e6e152afc7494048bda6c3c7ccba7179": {
     "name": "Akash",
@@ -388,11 +415,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:22:38",
-    "updated_at": "2026-06-03T18:22:38"
+    "updated_at": "2026-06-08T11:13:13"
   },
   "c9eb07b313174162b27a44c940cf1295": {
     "name": "Pankaj",
@@ -401,11 +429,12 @@
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpeg"
     ],
-    "embedding_count": 3,
+    "embedding_count": 4,
     "created_at": "2026-06-03T18:24:25",
-    "updated_at": "2026-06-03T18:24:26"
+    "updated_at": "2026-06-05T18:26:34"
   },
   "c4f18f84493548fa9f4db285288b3806": {
     "name": "Tahir",
@@ -420,17 +449,18 @@
     "created_at": "2026-06-04T18:43:50",
     "updated_at": "2026-06-04T18:43:51"
   },
-  "58082bd85e554e039bcc88cb1b0d48cd": {
+  "0fac7cfb3c1a4acfb39541406ccd9d25": {
     "name": "Kenvi",
     "department": "Sales Manager",
     "color": "#CE4981",
     "images": [
       "face_001.jpeg",
       "face_002.jpeg",
-      "face_003.jpeg"
+      "face_003.jpeg",
+      "face_004.jpeg"
     ],
-    "embedding_count": 3,
-    "created_at": "2026-06-05T11:10:25",
-    "updated_at": "2026-06-05T11:10:26"
+    "embedding_count": 4,
+    "created_at": "2026-06-05T18:30:17",
+    "updated_at": "2026-06-05T18:33:57"
   }
 }

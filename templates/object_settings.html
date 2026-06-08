@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Object Detection Settings{% endblock %}
+{% block heading %}Object Detection Settings{% endblock %}
+{% block content %}
+<div style="max-width:920px;display:grid;gap:18px;">
+
+  <div class="card">
+    <div class="section-title">Detection Performance</div>
+    <p class="help" style="margin-top:-6px;">Changes apply instantly to the running OD pipeline — no restart needed.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label>Global Confidence Fallback</label>
+        <input id="od_confidence" type="number" step="0.05" min="0.1" max="0.9" value="0.45" />
+        <span class="help">Used for classes without a per-class threshold.</span>
+      </div>
+      <div class="field">
+        <label>Detector Input Size (imgsz)</label>
+        <select id="od_imgsz">
+          <option value="480">480 — fastest (low CPU)</option>
+          <option value="640" selected>640 — balanced</option>
+          <option value="960">960 — accurate (high CPU)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>FPS Limit</label>
+        <input id="od_fps_limit" type="number" min="5" max="30" value="15" />
+      </div>
+      <div class="field">
+        <label>Track Buffer (frames)</label>
+        <input id="od_track_buffer" type="number" min="5" max="30" value="10" />
+        <span class="help">Frames a lost track is held before removal.</span>
+      </div>
+      <div class="field">
+        <label>Minimum Object Size (px)</label>
+        <select id="od_min_object_size">
+          <option value="15">15 px — very small</option>
+          <option value="20" selected>20 px — small</option>
+          <option value="30">30 px — medium</option>
+          <option value="40">40 px — large only</option>
+        </select>
+        <span class="help">Detections smaller than this are ignored (noise filter).</span>
+      </div>
+      <div class="field">
+        <label>JPEG Quality (1–100)</label>
+        <input id="od_jpeg_quality" type="number" min="30" max="100" value="60" />
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Object Classes &amp; Per-Class Thresholds</div>
+    <p class="help" style="margin-top:-6px;">
+      Check to enable a class. Adjust its threshold — lower = detect more (more noise),
+      higher = fewer but more certain detections. <b>Chair: 0.60</b> prevents furniture/robot
+      false positives. <b>Phone/Laptop: 0.30–0.35</b> catches small devices on tables.
+    </p>
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+      <button class="btn sm secondary" onclick="selectAll()">Select All</button>
+      <button class="btn sm secondary" onclick="selectNone()">Clear All</button>
+      <span class="help" style="margin-left:4px;">Enabled: <b id="enabledCount">0</b> classes</span>
+    </div>
+    <div id="classGrid" class="class-grid-thresh">
+      <div class="help">Loading classes…</div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn green" onclick="saveSettings()">Save &amp; Apply</button>
+    <span class="help">Applied to the running pipeline immediately.</span>
+  </div>
+</div>
+
+<style>
+.class-grid-thresh {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.cls-row {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px;
+  transition: border-color .15s;
+}
+.cls-row.enabled { border-color: var(--accent); background: rgba(59,130,246,.07); }
+.cls-row input[type=checkbox] { width: auto; accent-color: var(--accent); flex-shrink: 0; }
+.cls-name { font-size: 13px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cls-thresh-input {
+  width: 52px; padding: 3px 6px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--panel);
+  color: var(--text); font-size: 12px; text-align: center; flex-shrink: 0;
+}
+.cls-thresh-input:focus { outline: none; border-color: var(--accent); }
+.thresh-label { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+</style>
+
+<script>
+let allClasses = [];
+
+async function loadSettings() {
+  const r = await API.get("/api/object/settings");
+  if (!r.success) return;
+  const det = r.data.detection || {};
+  document.getElementById("od_confidence").value       = det.confidence      ?? 0.45;
+  document.getElementById("od_imgsz").value             = det.imgsz           ?? 640;
+  document.getElementById("od_fps_limit").value         = det.fps_limit       ?? 15;
+  document.getElementById("od_track_buffer").value      = det.track_buffer    ?? 10;
+  document.getElementById("od_min_object_size").value   = det.min_object_size ?? 20;
+  document.getElementById("od_jpeg_quality").value      = det.jpeg_quality    ?? 60;
+  // Store thresholds for use in renderClasses
+  window._savedThresholds = r.data.class_thresholds || {};
+}
+
+async function loadClasses() {
+  const r = await API.get("/api/object/classes");
+  if (!r.success) return;
+  allClasses = r.data.classes || [];
+  renderClasses();
+}
+
+function renderClasses() {
+  const grid = document.getElementById("classGrid");
+  const thresholds = window._savedThresholds || {};
+  grid.innerHTML = allClasses.map(c => {
+    const t = thresholds[String(c.id)] ?? thresholds[c.id] ?? 0.45;
+    return `
+    <div class="cls-row ${c.enabled ? 'enabled' : ''}" id="cls_row_${c.id}">
+      <input type="checkbox" id="cls_${c.id}" value="${c.id}"
+             ${c.enabled ? 'checked' : ''}
+             onchange="toggleClass(${c.id}, this.checked)" />
+      <span class="cls-name" title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
+      <span class="thresh-label">conf</span>
+      <input type="number" class="cls-thresh-input" id="thresh_${c.id}"
+             value="${t.toFixed(2)}" step="0.05" min="0.10" max="0.95"
+             title="Confidence threshold for ${escapeHtml(c.name)}" />
+    </div>`;
+  }).join("");
+  updateEnabledCount();
+}
+
+function toggleClass(id, checked) {
+  const c = allClasses.find(x => x.id === id);
+  if (c) c.enabled = checked;
+  const row = document.getElementById(`cls_row_${id}`);
+  if (row) row.classList.toggle("enabled", checked);
+  updateEnabledCount();
+}
+
+function updateEnabledCount() {
+  const n = allClasses.filter(c => c.enabled).length;
+  const el = document.getElementById("enabledCount");
+  if (el) el.textContent = n;
+}
+
+function selectAll()  { allClasses.forEach(c => { c.enabled = true; });  renderClasses(); }
+function selectNone() { allClasses.forEach(c => { c.enabled = false; }); renderClasses(); }
+
+async function saveSettings() {
+  // Collect per-class thresholds
+  const thresholds = {};
+  allClasses.forEach(c => {
+    const el = document.getElementById(`thresh_${c.id}`);
+    if (el) thresholds[String(c.id)] = parseFloat(el.value) || 0.45;
+  });
+
+  const payload = {
+    detection: {
+      confidence:      parseFloat(document.getElementById("od_confidence").value),
+      imgsz:           parseInt(document.getElementById("od_imgsz").value),
+      fps_limit:       parseInt(document.getElementById("od_fps_limit").value),
+      track_buffer:    parseInt(document.getElementById("od_track_buffer").value),
+      min_object_size: parseInt(document.getElementById("od_min_object_size").value),
+      jpeg_quality:    parseInt(document.getElementById("od_jpeg_quality").value),
+    },
+    enabled_classes:  allClasses.filter(c => c.enabled).map(c => c.id),
+    class_thresholds: thresholds,
+  };
+  const r = await API.post("/api/object/settings", payload);
+  toast(r.message || (r.success ? "Saved" : "Error"), r.success ? "ok" : "err");
+  if (r.success) window._savedThresholds = thresholds;
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+(async () => { await loadSettings(); await loadClasses(); })();
+</script>
+{% endblock %}
