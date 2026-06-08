@@ -1,23 +1,21 @@
-# Python
-venv/
-__pycache__/
-*.pyc
+# Face recognition data
+data/faces/
+data/embeddings/
+data/faiss/
+data/persons/
 
 # Logs
 logs/
 *.log
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
+# Python
+__pycache__/
+*.pyc
 
-# Face Recognition Data
-data/faces/
-data/uploads/
-data/embeddings/
-data/faiss/
-data/persons/
+# Environment
+venv/
+.venv/
+.env
 
 # Images
 *.jpg
@@ -28,9 +26,9 @@ data/persons/
 # Models (optional)
 *.onnx
 
-# Environment
-.env
+# IDE
+.vscode/
 
-# OS Files
+# OS
 .DS_Store
 Thumbs.db
