@@ -53,11 +53,12 @@ class CameraManager:
         self._lock = threading.RLock()
         self._stream: Optional[CameraStream] = None
         self._spec: Optional[SourceSpec] = None
-        # Use TCP transport + a 5s socket timeout for RTSP/IP cameras so a bad
-        # network address fails fast and the stream stays stable on good ones.
+        # Low-latency RTSP: TCP transport, 5 s fail-fast timeout, plus
+        # fflags;nobuffer and flags;low_delay to remove FFmpeg's internal
+        # receive buffer — cuts end-to-end RTSP latency from ~1 s to near-zero.
         os.environ.setdefault(
             "OPENCV_FFMPEG_CAPTURE_OPTIONS",
-            "rtsp_transport;tcp|stimeout;5000000",
+            "rtsp_transport;tcp|stimeout;5000000|fflags;nobuffer|flags;low_delay",
         )
         # Persistent camera config (active camera + saved RTSP cameras).
         self._config_path = os.path.join(settings.path("configs_dir"), "camera_config.json")

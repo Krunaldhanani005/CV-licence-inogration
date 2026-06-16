@@ -75,7 +75,7 @@ recognition:
                                # by threshold, so a weak match stays "Guest")
   guest_label: "Guest"
   recognize_max_attempts: 3    # tracks never lock as Guest; they keep retrying
-  recognition_interval: 12     # how often (frames) to run the frame-level face scan
+  recognition_interval: 6      # how often (frames) to run the frame-level face scan
   cache_seconds: 60            # reuse a track's identity for this long (smart cache)
   revalidation_interval: 45    # re-verify a recognised track every N frames
   max_validation_fails: 3      # consecutive failed re-checks before downgrade to Guest
@@ -107,14 +107,14 @@ pipeline:
                                  # stays small for CPU speed.
   detect_every_n_frames: 1       # tracker updates EVERY frame -> boxes stay tight
                                  # to moving people (adaptive mode raises it on load)
-  pose_every_n_frames: 10        # activity re-evaluation cadence (CPU friendly)
+  pose_every_n_frames: 3         # pose re-evaluation cadence — every 3 frames
   fps_limit: 15                  # max output FPS — smooth 10-15 preferred over laggy 20+
   max_capture_queue: 2           # always process newest frame; discard backlog
   max_missed_frames: 10          # remove a track if unseen this many frames (no ghosts)
   # ---- activity (motion-based: Standing / Walking / Idle) ----
-  walk_motion_threshold: 0.018   # normalised centroid speed above which = Walking
-  idle_motion_threshold: 0.005   # below this for a while = Idle
-  activity_smooth_window: 5      # majority vote window -> stable labels
+  walk_motion_threshold: 0.015   # normalised centroid speed above which = Walking
+  idle_motion_threshold: 0.004   # below this for a while = Idle
+  activity_smooth_window: 3      # majority vote window — 3 = fast transitions, minimal flicker
   jpeg_quality: 70
   draw_fps: false      # FPS is shown in the dashboard UI, keep the stream clean
   box_smooth_alpha: 0.8  # EMA factor — high = box snaps to person (low lag), still smooth

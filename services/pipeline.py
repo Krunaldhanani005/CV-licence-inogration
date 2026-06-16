@@ -60,8 +60,8 @@ class TrackState:
     draw_box: Optional[Tuple[float, float, float, float]] = None  # smoothed (EMA) box
     hits: int = 0                     # consecutive detections (for confirmation)
     confirmed: bool = False           # shown only after enough confirmations
-    centers: Deque[Tuple[float, float]] = field(default_factory=lambda: deque(maxlen=5))
-    activity_history: Deque[str] = field(default_factory=lambda: deque(maxlen=5))
+    centers: Deque[Tuple[float, float]] = field(default_factory=lambda: deque(maxlen=3))
+    activity_history: Deque[str] = field(default_factory=lambda: deque(maxlen=3))
     last_seen: float = 0.0
     last_seen_frame: int = 0          # global frame index of last detection
     gen: int = 0                      # identity-epoch token (bumped on reuse/invalidate)
@@ -112,6 +112,7 @@ class MonitoringPipeline:
         self._recog_req = None            # (frame, boxes, gens)  latest only
         self._recog_out = None            # {tid: (match, emb, gen)}  latest results
         self._gen_counter = 0             # monotonic identity-epoch counter
+        self._new_track_confirmed = False # signals immediate recognition for new tracks
 
         # Session-based camera selection. No camera is opened until the user picks
         # one from the Live Monitoring dialog. The choice is in-memory only.
@@ -496,9 +497,11 @@ class MonitoringPipeline:
         if run_detect:
             detections = self.tracker.update(frame)
             self._sync_tracks(detections, frame, width, height)
-            # Face recognition: hand the newest frame + confirmed boxes to the
-            # recognition worker (async) so it never blocks the stream.
-            if self._frame_idx % self._eff_recognition_interval() == 0:
+            # Submit recognition on the regular interval OR immediately when a
+            # new track just confirmed — skips the full interval wait so a new
+            # person's face is checked within one detection cycle.
+            force_recog, self._new_track_confirmed = self._new_track_confirmed, False
+            if self._frame_idx % self._eff_recognition_interval() == 0 or force_recog:
                 self._submit_recognition(frame)
 
         # Apply any recognition results produced by the worker thread.
@@ -671,6 +674,7 @@ class MonitoringPipeline:
             state.hits += 1
             if not state.confirmed and state.hits >= self.min_confirm_frames:
                 state.confirmed = True
+                self._new_track_confirmed = True  # skip interval — recognise now
 
             # Smooth the drawn box (EMA) so it moves fluidly without jitter.
             a = self.box_smooth_alpha
@@ -687,8 +691,9 @@ class MonitoringPipeline:
             state.centers.append((cx, cy))
             motion = self._motion_speed(state.centers, box_h)
 
-            # Activity from MOTION (not pose) -> Standing / Walking / Idle, smoothed.
-            self._update_activity(state, motion)
+            # Activity: pose every pose_every_n frames for Sitting/Bending;
+            # motion-only on all other frames for instant Walking/Idle.
+            self._update_activity_smart(state, frame, box, motion)
 
             # Appearance guard: a recognised track whose body colours suddenly and
             # persistently change is a DIFFERENT person now — this catches a smooth
@@ -1002,20 +1007,38 @@ class MonitoringPipeline:
         state.pending_emb = None
         state.pending_confirm = 0
 
-    def _update_activity(self, state: TrackState, motion: float) -> None:
-        """Motion-driven activity (Standing / Walking / Idle) with majority smoothing.
-
-        Walking is decided from sustained centroid movement — never from a single
-        frame or pose landmarks — so sitting/partial-body people are not mislabelled.
-        """
+    def _motion_to_activity(self, motion: float) -> str:
+        """Map normalised centroid speed to Walking / Standing / Idle."""
         if motion >= self.walk_thresh:
-            raw = "Walking"
-        elif motion <= self.idle_thresh:
-            raw = "Idle"
+            return "Walking"
+        if motion <= self.idle_thresh:
+            return "Idle"
+        return "Standing"
+
+    def _update_activity(self, state: TrackState, motion: float) -> None:
+        """Motion-only activity update (fast fallback)."""
+        label = self._motion_to_activity(motion)
+        state.activity_history.append(label)
+        state.activity = Counter(state.activity_history).most_common(1)[0][0]
+
+    def _update_activity_smart(self, state: TrackState, frame: np.ndarray,
+                                box: tuple, motion: float) -> None:
+        """Pose-aware activity — MediaPipe every pose_every_n frames for Sitting/
+        Bending; motion-only on all other frames for instant Walking response.
+        Smoothing window is 3 so labels change within 2 frames of an actual
+        posture transition while still suppressing single-frame flicker.
+        """
+        run_pose = (self._frame_idx % self._eff_pose_every() == 0
+                    and self.pose.enabled)
+        if run_pose:
+            x1, y1, x2, y2 = box
+            crop = frame[max(0, y1):y2, max(0, x1):x2]
+            label = (self.pose.estimate(crop, motion)
+                     if crop.size > 0
+                     else self._motion_to_activity(motion))
         else:
-            raw = "Standing"
-        state.activity_history.append(raw)
-        # Display the most frequent label over the recent window (stable, no flicker).
+            label = self._motion_to_activity(motion)
+        state.activity_history.append(label)
         state.activity = Counter(state.activity_history).most_common(1)[0][0]
 
     @staticmethod
