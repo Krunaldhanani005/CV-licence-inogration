@@ -26,6 +26,13 @@ async function switchMode(mode) {
     return;
   }
   toast(mode === "od" ? "Object Detection mode" : "Face Recognition mode", "ok");
+  // Reconnect the MJPEG stream so the browser picks up the new pipeline's
+  // frames without a full page refresh.
+  const feed = document.getElementById("feed");
+  if (feed) {
+    feed.src = "";
+    setTimeout(() => { feed.src = "/api/video_feed"; }, 200);
+  }
   refresh();
 }
 
@@ -189,8 +196,13 @@ async function loadEnabledClassCount() {
   try {
     const r = await API.get("/api/object/classes");
     if (!r.success) return;
-    const count = (r.data.classes || []).filter(c => c.enabled).length;
-    setText("cEnabledClasses", count);
+    const classes = r.data.classes || [];
+    const enabled = classes.filter(c => c.enabled);
+    // empty enabled_classes list means ALL classes are active
+    const label = (enabled.length === classes.length || enabled.length === 0)
+      ? `All (${classes.length})`
+      : enabled.length;
+    setText("cEnabledClasses", label);
   } catch (e) {}
 }
 

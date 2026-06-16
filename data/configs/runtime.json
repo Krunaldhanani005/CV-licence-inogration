@@ -22,9 +22,9 @@
     "revalidation_interval": 60,
     "max_validation_fails": 3,
     "debug": false,
-    "min_det_score": 0.4,
-    "min_sharpness": 8.0,
-    "det_size": 960,
+    "min_det_score": 0.35,
+    "min_sharpness": 5.0,
+    "det_size": 1280,
     "reverify_gap_frames": 3,
     "appearance_corr_threshold": 0.5,
     "appearance_mismatch_frames": 3

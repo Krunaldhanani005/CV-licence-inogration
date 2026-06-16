@@ -39,9 +39,9 @@ class FaceRecognizer:
         self.settings = settings
         cfg = settings.section("recognition")
         self.model_name = cfg.get("model_name", "buffalo_sc")
-        self.det_size = int(cfg.get("det_size", 640))
+        self.det_size = int(cfg.get("det_size", 1280))
         self.threshold = float(cfg.get("threshold", 0.45))
-        self.min_face_size = int(cfg.get("min_face_size", 30))
+        self.min_face_size = int(cfg.get("min_face_size", 15))
         self.guest_label = cfg.get("guest_label", "Guest")
         self._infer_lock = threading.Lock()
 
@@ -77,7 +77,11 @@ class FaceRecognizer:
             providers=["CPUExecutionProvider"],
         )
         self._enroll_app.prepare(ctx_id=-1, det_size=(480, 480))
-        logger.info("InsightFace ready (live det=%d, enroll det=480)", self.det_size)
+        logger.info(
+            "InsightFace ready — model=%s  live_det=%d  enroll_det=480  "
+            "threshold=%.2f  min_face=%dpx",
+            self.model_name, self.det_size, self.threshold, self.min_face_size,
+        )
 
     # -------------------------------------------------------------- detect
     def detect_faces(self, image: np.ndarray):
@@ -143,14 +147,18 @@ class FaceRecognizer:
             person_id, score = results[0]
             if score >= self.threshold:
                 rec = self.db.record_of(person_id) or {}
+                name = rec.get("name") or self.guest_label
                 department = rec.get("department", "")
+                logger.debug("Recognition match: %s (score=%.3f, dept=%s)", name, score, department)
                 return {
-                    "name": rec.get("name") or self.guest_label,
+                    "name": name,
                     "department": department,
                     "color": rec.get("color") or dept.color_for(department),
                     "score": float(score),
                     "is_known": True,
                 }
+            logger.debug("Recognition no-match: best_score=%.3f < threshold=%.2f → Guest",
+                         score, self.threshold)
             return {"name": self.guest_label, "department": "", "color": dept.GUEST_COLOR,
                     "score": float(score), "is_known": False}
         return {"name": self.guest_label, "department": "", "color": dept.GUEST_COLOR,
@@ -161,7 +169,9 @@ class FaceRecognizer:
         matches: List[FaceMatch] = []
         for face in self.detect_faces(image):
             x1, y1, x2, y2 = [int(v) for v in face.bbox]
-            if min(x2 - x1, y2 - y1) < self.min_face_size:
+            face_dim = min(x2 - x1, y2 - y1)
+            if face_dim < self.min_face_size:
+                logger.debug("Face skipped: %dpx < min_face_size=%dpx", face_dim, self.min_face_size)
                 continue
             emb = np.asarray(face.normed_embedding, dtype=np.float32)
             m = self.match_embedding(emb)

@@ -44,12 +44,14 @@ camera:
   reconnect_delay_sec: 3.0
 
 detection:
-  model_path: "yolov8n.pt"
+  model_path: "yolov8n.pt"     # FR person-body detector — nano is fast enough for
+                               # single-class (person) tracking
+  od_model_path: "yolov8m.pt"  # OD pipeline model — medium for better accuracy on
+                               # all 80 COCO classes; auto-downloaded on first run
   person_class_id: 0
   confidence: 0.45
   iou: 0.50
-  imgsz: 640          # YOLO input size (kept at 640 for CPU speed; the *display*
-                      # resolution is pipeline.stream_resolution, set separately)
+  imgsz: 640          # FR person-body detector input size (CPU speed)
   device: "cpu"
   min_confirm_frames: 3   # a track must be seen this many times before it's shown
                           # (avoids random/flickering false boxes)
@@ -64,15 +66,15 @@ tracking:
 
 recognition:
   model_name: "buffalo_sc"     # lightweight CPU-friendly InsightFace pack
-  det_size: 960                # face-detector input size — higher = better FAR-face
-                               # detection (runs on the recognition thread, so it
-                               # does NOT slow the live stream)
+  det_size: 1280               # face-detector input size — 1280 matches 1920x1080
+                               # streams and detects far/small faces reliably;
+                               # runs on the recognition thread, NOT the live stream
   threshold: 0.45              # cosine similarity for a known match — THIS is the
                                # guard against random/wrong identities (keep it firm)
-  min_face_size: 20            # accept smaller far faces (recognition still gated
+  min_face_size: 15            # accept smaller far faces (recognition still gated
                                # by threshold, so a weak match stays "Guest")
   guest_label: "Guest"
-  recognize_max_attempts: 3    # (kept) tracks never lock as Guest; they keep retrying
+  recognize_max_attempts: 3    # tracks never lock as Guest; they keep retrying
   recognition_interval: 12     # how often (frames) to run the frame-level face scan
   cache_seconds: 60            # reuse a track's identity for this long (smart cache)
   revalidation_interval: 45    # re-verify a recognised track every N frames
@@ -87,8 +89,11 @@ recognition:
   # ---- face quality gate (prefer "Guest" over a wrong identity) ----
   # Permissive enough to ATTEMPT far faces; the recognition threshold above is
   # what actually prevents wrong names (weak matches fall back to Guest).
-  min_det_score: 0.40          # InsightFace face-detector confidence floor
-  min_sharpness: 8.0           # Laplacian-variance floor (rejects only very blurry)
+  min_det_score: 0.35          # InsightFace face-detector confidence floor (lowered
+                               # for better far-face sensitivity)
+  min_sharpness: 5.0           # Laplacian-variance floor — relaxed to accept slightly
+                               # blurry distant faces; identity threshold prevents
+                               # wrong matches from sticking
 
 pose:
   model_complexity: 0          # 0 = fastest, CPU friendly

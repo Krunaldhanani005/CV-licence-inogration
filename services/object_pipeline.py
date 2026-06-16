@@ -23,50 +23,117 @@ from core.utils import get_logger
 
 logger = get_logger(__name__)
 
-# --------------------------------------------------- COCO class catalogue
+# --------------------------------------------------- COCO class catalogue (all 80)
 COCO_CLASSES: Dict[int, str] = {
-    0: "Person",    1: "Bicycle",   2: "Car",       3: "Motorcycle",
-    5: "Bus",       7: "Truck",
-    14: "Bird",     15: "Cat",      16: "Dog",
-    24: "Backpack", 25: "Umbrella", 26: "Handbag",  28: "Suitcase",
-    39: "Bottle",   41: "Cup",
-    56: "Chair",    57: "Couch",    60: "Table",
-    62: "TV",       63: "Laptop",   64: "Mouse",
-    66: "Keyboard", 67: "Cell Phone",
-    73: "Book",     74: "Clock",
+    0:  "Person",        1:  "Bicycle",       2:  "Car",           3:  "Motorcycle",
+    4:  "Airplane",      5:  "Bus",           6:  "Train",         7:  "Truck",
+    8:  "Boat",          9:  "Traffic Light", 10: "Fire Hydrant",  11: "Stop Sign",
+    12: "Parking Meter", 13: "Bench",         14: "Bird",          15: "Cat",
+    16: "Dog",           17: "Horse",         18: "Sheep",         19: "Cow",
+    20: "Elephant",      21: "Bear",          22: "Zebra",         23: "Giraffe",
+    24: "Backpack",      25: "Umbrella",      26: "Handbag",       27: "Tie",
+    28: "Suitcase",      29: "Frisbee",       30: "Skis",          31: "Snowboard",
+    32: "Sports Ball",   33: "Kite",          34: "Baseball Bat",  35: "Baseball Glove",
+    36: "Skateboard",    37: "Surfboard",     38: "Tennis Racket", 39: "Bottle",
+    40: "Wine Glass",    41: "Cup",           42: "Fork",          43: "Knife",
+    44: "Spoon",         45: "Bowl",          46: "Banana",        47: "Apple",
+    48: "Sandwich",      49: "Orange",        50: "Broccoli",      51: "Carrot",
+    52: "Hot Dog",       53: "Pizza",         54: "Donut",         55: "Cake",
+    56: "Chair",         57: "Couch",         58: "Potted Plant",  59: "Bed",
+    60: "Dining Table",  61: "Toilet",        62: "TV",            63: "Laptop",
+    64: "Mouse",         65: "Remote",        66: "Keyboard",      67: "Cell Phone",
+    68: "Microwave",     69: "Oven",          70: "Toaster",       71: "Sink",
+    72: "Refrigerator",  73: "Book",          74: "Clock",         75: "Vase",
+    76: "Scissors",      77: "Teddy Bear",    78: "Hair Drier",    79: "Toothbrush",
 }
 
-DEFAULT_ENABLED: List[int] = [0, 67, 63, 56, 39, 24, 26, 28, 2, 3, 5, 7, 1, 16, 15]
+# Empty list = all classes enabled (YOLO passes classes=None which detects everything)
+DEFAULT_ENABLED: List[int] = []
 
-# Per-class confidence thresholds.
-# Classes with many false positives (e.g. Chair) get a higher threshold;
-# small hard-to-detect objects (Phone, Laptop) get a lower one.
+# Per-class confidence thresholds for all 80 COCO classes.
+# Small/far objects and animals get lower thresholds for better recall;
+# large static objects prone to false-positives stay higher.
 DEFAULT_CLASS_THRESHOLDS: Dict[int, float] = {
     0:  0.40,   # Person
-    1:  0.45,   # Bicycle
-    2:  0.45,   # Car
-    3:  0.45,   # Motorcycle
-    5:  0.45,   # Bus
-    7:  0.45,   # Truck
-    14: 0.45,   # Bird
-    15: 0.40,   # Cat
-    16: 0.40,   # Dog
-    24: 0.40,   # Backpack
-    25: 0.45,   # Umbrella
-    26: 0.40,   # Handbag
-    28: 0.45,   # Suitcase
-    39: 0.45,   # Bottle
-    41: 0.45,   # Cup
-    56: 0.60,   # Chair — prone to false positives; keep strict
-    57: 0.55,   # Couch
-    60: 0.50,   # Table
-    62: 0.45,   # TV
-    63: 0.35,   # Laptop — small on tables; needs lower threshold
-    64: 0.40,   # Mouse
-    66: 0.40,   # Keyboard
-    67: 0.30,   # Cell Phone — very small; needs the lowest threshold
-    73: 0.45,   # Book
-    74: 0.45,   # Clock
+    1:  0.40,   # Bicycle
+    2:  0.40,   # Car
+    3:  0.40,   # Motorcycle
+    4:  0.40,   # Airplane
+    5:  0.40,   # Bus
+    6:  0.40,   # Train
+    7:  0.40,   # Truck
+    8:  0.40,   # Boat
+    9:  0.35,   # Traffic Light — small, high priority
+    10: 0.40,   # Fire Hydrant
+    11: 0.40,   # Stop Sign
+    12: 0.40,   # Parking Meter
+    13: 0.40,   # Bench
+    14: 0.40,   # Bird
+    15: 0.35,   # Cat
+    16: 0.35,   # Dog
+    17: 0.40,   # Horse
+    18: 0.40,   # Sheep
+    19: 0.40,   # Cow
+    20: 0.40,   # Elephant
+    21: 0.40,   # Bear
+    22: 0.40,   # Zebra
+    23: 0.40,   # Giraffe
+    24: 0.35,   # Backpack — small, commonly carried
+    25: 0.40,   # Umbrella
+    26: 0.35,   # Handbag — small, commonly carried
+    27: 0.35,   # Tie — very small
+    28: 0.40,   # Suitcase
+    29: 0.40,   # Frisbee
+    30: 0.40,   # Skis
+    31: 0.40,   # Snowboard
+    32: 0.35,   # Sports Ball — small, round, hard to detect
+    33: 0.35,   # Kite
+    34: 0.40,   # Baseball Bat
+    35: 0.40,   # Baseball Glove
+    36: 0.40,   # Skateboard
+    37: 0.40,   # Surfboard
+    38: 0.40,   # Tennis Racket
+    39: 0.35,   # Bottle — small, important to detect
+    40: 0.35,   # Wine Glass — small
+    41: 0.35,   # Cup — small
+    42: 0.35,   # Fork — very small
+    43: 0.35,   # Knife — very small
+    44: 0.35,   # Spoon — very small
+    45: 0.40,   # Bowl
+    46: 0.35,   # Banana
+    47: 0.35,   # Apple
+    48: 0.40,   # Sandwich
+    49: 0.35,   # Orange
+    50: 0.40,   # Broccoli
+    51: 0.40,   # Carrot
+    52: 0.40,   # Hot Dog
+    53: 0.40,   # Pizza
+    54: 0.40,   # Donut
+    55: 0.40,   # Cake
+    56: 0.50,   # Chair — prone to false positives; keep higher
+    57: 0.50,   # Couch — large static object, keep higher
+    58: 0.35,   # Potted Plant — often missed at distance
+    59: 0.45,   # Bed
+    60: 0.45,   # Dining Table — large, can overlap other objects
+    61: 0.45,   # Toilet
+    62: 0.40,   # TV
+    63: 0.30,   # Laptop — small on tables; lowest threshold
+    64: 0.30,   # Mouse — very small
+    65: 0.30,   # Remote — very small
+    66: 0.35,   # Keyboard
+    67: 0.25,   # Cell Phone — smallest common object; needs lowest threshold
+    68: 0.40,   # Microwave
+    69: 0.40,   # Oven
+    70: 0.40,   # Toaster
+    71: 0.40,   # Sink
+    72: 0.40,   # Refrigerator
+    73: 0.35,   # Book
+    74: 0.35,   # Clock
+    75: 0.40,   # Vase
+    76: 0.35,   # Scissors
+    77: 0.35,   # Teddy Bear
+    78: 0.35,   # Hair Drier
+    79: 0.35,   # Toothbrush — very small
 }
 
 _PALETTE = [
@@ -89,8 +156,8 @@ def _bgr(cls_id: int) -> Tuple[int, int, int]:
 def load_od_settings() -> dict:
     defaults: dict = {
         "detection": {
-            "confidence": 0.45, "imgsz": 640, "fps_limit": 15,
-            "track_buffer": 10, "min_object_size": 20, "jpeg_quality": 60,
+            "confidence": 0.35, "imgsz": 1280, "fps_limit": 15,
+            "track_buffer": 10, "min_object_size": 15, "jpeg_quality": 60,
         },
         "enabled_classes": list(DEFAULT_ENABLED),
         "class_thresholds": dict(DEFAULT_CLASS_THRESHOLDS),
@@ -148,12 +215,18 @@ class ObjectDetectionPipeline:
         except Exception:
             pass
 
-        logger.info("Loading OD pipeline YOLO model…")
-        model_path = os.path.join(
-            settings.base_dir,
-            settings.get("detection", "model_path", "yolov8n.pt"))
+        # Use dedicated OD model (od_model_path) when configured; fall back to
+        # the shared model_path so existing deployments keep working unchanged.
+        od_model = settings.get("detection", "od_model_path",
+                                settings.get("detection", "model_path", "yolov8m.pt"))
+        model_path = os.path.join(settings.base_dir, od_model)
+        # If the file doesn't exist at the absolute path let Ultralytics
+        # auto-download it (e.g. "yolov8m.pt" fetches from the hub on first run).
+        if not os.path.isfile(model_path):
+            model_path = od_model
+        logger.info("Loading OD pipeline YOLO model: %s", model_path)
         self._model = YOLO(model_path)
-        logger.info("OD pipeline YOLO model loaded")
+        logger.info("OD pipeline YOLO model loaded: %s", getattr(self._model, "ckpt_path", model_path))
 
         trk = settings.get("tracking", "tracker", "bytetrack.yaml")
         local = os.path.join(settings.base_dir, "config", trk)
@@ -177,11 +250,11 @@ class ObjectDetectionPipeline:
     def _reload_params(self) -> None:
         cfg = load_od_settings()
         det = cfg["detection"]
-        self._confidence  = float(det.get("confidence", 0.45))
-        self._imgsz       = int(det.get("imgsz", 640))
+        self._confidence  = float(det.get("confidence", 0.35))
+        self._imgsz       = int(det.get("imgsz", 1280))
         self._fps_limit   = max(1, int(det.get("fps_limit", 15)))
         self._max_missed  = max(5, int(det.get("track_buffer", 10)))
-        self._min_size    = int(det.get("min_object_size", 20))
+        self._min_size    = int(det.get("min_object_size", 15))
         self._jpeg_q      = int(det.get("jpeg_quality", 60))
         raw = cfg.get("enabled_classes", DEFAULT_ENABLED)
         self._enabled: Optional[List[int]] = ([int(c) for c in raw] if raw else None)
@@ -192,10 +265,17 @@ class ObjectDetectionPipeline:
 
         # YOLO runs at the minimum threshold across all enabled classes so it
         # doesn't silently drop low-threshold detections (e.g. Cell Phone at
-        # 0.30).  We post-filter to each class's actual threshold below.
+        # 0.25).  We post-filter to each class's actual threshold below.
         enabled_set = set(self._enabled) if self._enabled else set(self._class_thresholds)
         relevant = [v for k, v in self._class_thresholds.items() if k in enabled_set]
         self._yolo_conf = min(relevant) if relevant else self._confidence
+        enabled_count = len(self._enabled) if self._enabled else len(COCO_CLASSES)
+        logger.info(
+            "OD params loaded — model_imgsz=%d  yolo_conf=%.2f  "
+            "enabled_classes=%d  min_size=%dpx  fps_limit=%d",
+            self._imgsz, self._yolo_conf, enabled_count,
+            self._min_size, self._fps_limit,
+        )
 
     @staticmethod
     def _parse_res(value: str) -> Tuple[int, int]:
@@ -251,9 +331,13 @@ class ObjectDetectionPipeline:
         self._active_cfg = dict(cfg)
         self._has_source = True
         self._source_lost = False
-        logger.info("OD pipeline: detection started")
-        return {"success": True, "message": "Object Detection started",
-                **self.cam_manager.describe()}
+        cam_desc = self.cam_manager.describe()
+        logger.info(
+            "OD pipeline: detection started — camera=%s  imgsz=%d  yolo_conf=%.2f  classes=%s",
+            cam_desc.get("label", "?"), self._imgsz, self._yolo_conf,
+            f"all {len(COCO_CLASSES)}" if not self._enabled else len(self._enabled),
+        )
+        return {"success": True, "message": "Object Detection started", **cam_desc}
 
     def stop_detection(self) -> dict:
         self.cam_manager.stop()

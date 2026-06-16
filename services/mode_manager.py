@@ -43,8 +43,10 @@ class ModeManager:
     def switch(self, mode: str) -> dict:
         """Stop the active pipeline and start the requested one.
 
-        If detection was running it is automatically restarted on the new
-        pipeline so the user does not need to press Start Detection again.
+        Detection is always automatically started on the new pipeline when a
+        camera is configured — the user never needs to press Start again after
+        switching modes.  If no camera is configured yet, the new pipeline
+        starts idle (same as before) and a warning is logged.
         """
         with self._lock:
             if mode not in (FR, OD):
@@ -56,22 +58,41 @@ class ModeManager:
             current = self.pipeline()
             was_running = current.detection_running
 
-            logger.info("ModeManager: switching %s → %s (was_running=%s)",
-                        self._mode, mode, was_running)
+            logger.info(
+                "ModeManager: switching %s → %s  (detection_was_running=%s)",
+                self._mode, mode, was_running,
+            )
 
             current.stop_detection()
             current.stop()
+            logger.info("ModeManager: %s pipeline stopped", self._mode)
 
             self._mode = mode
             new_pipe = self.pipeline()
             new_pipe.start()
+            logger.info("ModeManager: %s pipeline started", mode)
 
-            if was_running:
-                result = new_pipe.start_detection()
-                if not result.get("success"):
-                    logger.warning("Mode switch: new pipeline start_detection failed: %s",
-                                   result.get("message"))
+            # Always attempt to auto-start detection on the new pipeline.
+            # This removes the need for a manual Start button press after
+            # every mode switch.  If no camera is configured the call
+            # returns success=False with a clear message — log it and
+            # continue; the UI overlay will prompt the user to configure one.
+            auto_result = new_pipe.start_detection()
+            if auto_result.get("success"):
+                logger.info(
+                    "ModeManager: detection auto-started on %s pipeline", mode,
+                )
+            else:
+                logger.info(
+                    "ModeManager: detection auto-start skipped on %s — %s",
+                    mode, auto_result.get("message", "no camera"),
+                )
 
         logger.info("ModeManager: now in %s mode", mode)
-        return {"success": True, "message": f"Switched to {mode} mode",
-                "mode": mode, "was_running": was_running}
+        return {
+            "success": True,
+            "message": f"Switched to {mode} mode",
+            "mode": mode,
+            "was_running": was_running,
+            "detection_started": auto_result.get("success", False),
+        }
