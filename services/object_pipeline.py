@@ -156,7 +156,7 @@ def _bgr(cls_id: int) -> Tuple[int, int, int]:
 def load_od_settings() -> dict:
     defaults: dict = {
         "detection": {
-            "confidence": 0.35, "imgsz": 1280, "fps_limit": 15,
+            "confidence": 0.25, "imgsz": 960, "fps_limit": 15,
             "track_buffer": 10, "min_object_size": 15, "jpeg_quality": 60,
         },
         "enabled_classes": list(DEFAULT_ENABLED),

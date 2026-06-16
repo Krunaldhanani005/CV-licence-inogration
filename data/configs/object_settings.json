@@ -1,7 +1,7 @@
 {
   "detection": {
-    "confidence": 0.35,
-    "imgsz": 1280,
+    "confidence": 0.25,
+    "imgsz": 960,
     "fps_limit": 18,
     "track_buffer": 10,
     "min_object_size": 15,

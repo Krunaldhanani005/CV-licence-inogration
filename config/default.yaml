@@ -46,8 +46,8 @@ camera:
 detection:
   model_path: "yolov8n.pt"     # FR person-body detector — nano is fast enough for
                                # single-class (person) tracking
-  od_model_path: "yolov8m.pt"  # OD pipeline model — medium for better accuracy on
-                               # all 80 COCO classes; auto-downloaded on first run
+  od_model_path: "yolov8s.pt"  # OD pipeline model — small: faster than medium,
+                               # better accuracy than nano; auto-downloaded on first run
   person_class_id: 0
   confidence: 0.45
   iou: 0.50
