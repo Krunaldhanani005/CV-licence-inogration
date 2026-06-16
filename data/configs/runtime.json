@@ -1,6 +1,6 @@
 {
   "pipeline": {
-    "stream_resolution": "1280x720",
+    "stream_resolution": "1920x1080",
     "fps_limit": 15,
     "detect_every_n_frames": 1,
     "pose_every_n_frames": 10,
@@ -16,9 +16,9 @@
   "recognition": {
     "threshold": 0.4,
     "recognition_interval": 15,
-    "min_face_size": 15,
+    "min_face_size": 12,
     "recognize_max_attempts": 1,
-    "cache_seconds": 40,
+    "cache_seconds": 120,
     "revalidation_interval": 60,
     "max_validation_fails": 3,
     "debug": false,
@@ -35,7 +35,7 @@
     "min_confirm_frames": 2
   },
   "tracking": {
-    "track_buffer": 10
+    "track_buffer": 15
   },
   "pose": {
     "enabled": true,

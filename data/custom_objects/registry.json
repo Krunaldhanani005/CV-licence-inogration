@@ -1,0 +1,37 @@
+{
+  "objects": [
+    {
+      "id": "2fb8f440",
+      "name": "Chair",
+      "description": "",
+      "images": [
+        "0000_1781087983.png"
+      ],
+      "image_count": 1,
+      "created_at": "2026-06-10T10:39:43.678890",
+      "status": "stored"
+    },
+    {
+      "id": "a86adb4b",
+      "name": "Chairs",
+      "description": "",
+      "images": [
+        "0000_1781088031.png"
+      ],
+      "image_count": 1,
+      "created_at": "2026-06-10T10:40:31.077366",
+      "status": "stored"
+    },
+    {
+      "id": "9cfbec1a",
+      "name": "chaird",
+      "description": "",
+      "images": [
+        "0000_1781088089.png"
+      ],
+      "image_count": 1,
+      "created_at": "2026-06-10T10:41:29.207353",
+      "status": "stored"
+    }
+  ]
+}
