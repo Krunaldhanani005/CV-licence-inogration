@@ -20,7 +20,7 @@
     "recognize_max_attempts": 1,
     "cache_seconds": 120,
     "revalidation_interval": 60,
-    "max_validation_fails": 3,
+    "max_validation_fails": 5,
     "debug": false,
     "min_det_score": 0.35,
     "min_sharpness": 5.0,

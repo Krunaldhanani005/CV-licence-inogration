@@ -542,7 +542,7 @@ class MonitoringPipeline:
             # person's face is checked within one detection cycle.
             force_recog, self._new_track_confirmed = self._new_track_confirmed, False
             if self._frame_idx % self._eff_recognition_interval() == 0 or force_recog:
-                self._submit_recognition(frame)
+                self._submit_recognition(frame, force=force_recog)
         else:
             # On skip frames, extrapolate each box by its last known velocity so
             # boxes glide smoothly with moving people instead of freezing in place.
@@ -587,14 +587,31 @@ class MonitoringPipeline:
     def _confirmed_boxes(self) -> Dict[int, Tuple[int, int, int, int]]:
         return {tid: st.box for tid, st in self._tracks.items() if st.confirmed}
 
-    def _submit_recognition(self, frame: np.ndarray) -> None:
+    def _submit_recognition(self, frame: np.ndarray, force: bool = False) -> None:
         boxes, gens = {}, {}
+        has_unrecognized = False
         for tid, st in self._tracks.items():
-            if st.confirmed:
-                boxes[tid] = st.box
-                gens[tid] = st.gen
+            if not st.confirmed:
+                continue
+            if not st.recognized:
+                has_unrecognized = True
+            boxes[tid] = st.box
+            gens[tid] = st.gen
         if not boxes:
             return
+        # Skip scheduled (non-forced) recognition cycles when every confirmed
+        # person is already identified and none is due for re-verification.
+        # Forced calls (new track just confirmed) always go through so a new
+        # arrival is recognised immediately regardless of the scene state.
+        if not force and not has_unrecognized:
+            any_due = any(
+                st.force_reverify or
+                (self._frame_idx - st.last_verified_frame >= self.revalidation_interval)
+                for st in self._tracks.values()
+                if st.confirmed and st.recognized
+            )
+            if not any_due:
+                return
         if self.async_recognition:
             with self._recog_lock:
                 # Copy frame so _draw() can safely modify the original concurrently.
@@ -975,9 +992,28 @@ class MonitoringPipeline:
                             state.track_id, state.name)
             return
 
-        # A DIFFERENT enrolled person's face is confidently in this box -> likely a
-        # ByteTrack swap. Switch identity only after repeated agreement (verified),
-        # never instantly, so a single noisy frame can't move an identity.
+        # A DIFFERENT enrolled person's face is in this box.
+        # Overlap guard: if another confirmed track is physically close/overlapping,
+        # this is almost certainly a ByteTrack ID swap during crossing — hold the
+        # current identity and do NOT accumulate verify_fail.  The appearance guard
+        # already skips its check during overlap; this closes the same gap for the
+        # recognition path.
+        if self._any_track_overlap(state):
+            if self.debug_recognition:
+                logger.info("[ID] track id=%d OVERLAP guard: keep %s, ignore %s",
+                            state.track_id, state.name, match["name"])
+            return
+
+        # Score guard: only count this as a failure if the challenger is
+        # significantly above the recognition threshold, not merely marginal
+        # (e.g. score=0.41 on a 0.40 threshold is not meaningful evidence).
+        if match.get("score", 0.0) < self.recognizer.threshold + 0.12:
+            if self.debug_recognition:
+                logger.info("[ID] track id=%d challenger %s score=%.2f too weak -> keep %s",
+                            state.track_id, match["name"],
+                            match.get("score", 0.0), state.name)
+            return
+
         state.verify_fail += 1
         if self.debug_recognition:
             logger.info("[ID] track id=%d sees DIFFERENT %s (was %s) %d/%d",
@@ -985,6 +1021,18 @@ class MonitoringPipeline:
                         state.verify_fail, self.max_validation_fails)
         if state.verify_fail >= self.max_validation_fails:
             self._bind_identity(state, match, emb)   # verified switch to the new person
+
+    def _any_track_overlap(self, state: TrackState) -> bool:
+        """True if any other confirmed track's box meaningfully overlaps this one.
+
+        Used to suppress identity changes during people crossing/overlapping —
+        the exact scenario where ByteTrack most often reassigns IDs incorrectly.
+        """
+        for other in self._tracks.values():
+            if other.track_id != state.track_id and other.confirmed:
+                if iou(state.box, other.box) > 0.10:
+                    return True
+        return False
 
     def _bind_identity(self, state: TrackState, match: dict, emb: np.ndarray) -> None:
         state.name = match["name"]
@@ -1073,7 +1121,11 @@ class MonitoringPipeline:
         Smoothing window is 3 so labels change within 2 frames of an actual
         posture transition while still suppressing single-frame flicker.
         """
-        run_pose = (self._frame_idx % self._eff_pose_every() == 0
+        # Stagger pose across people using track_id as a frame offset.
+        # With pose_every_n=3 and 3 people: person 0 updates on frames 0,3,6…
+        # person 1 on frames 1,4,7… person 2 on frames 2,5,8… — MediaPipe
+        # calls are spread evenly instead of spiking on the same frame.
+        run_pose = ((self._frame_idx + state.track_id) % self._eff_pose_every() == 0
                     and self.pose.enabled)
         if run_pose:
             x1, y1, x2, y2 = box
