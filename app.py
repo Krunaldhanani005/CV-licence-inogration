@@ -9,8 +9,18 @@ Then open http://localhost:5000 on the reception monitor.
 from __future__ import annotations
 
 import logging
+import os
 import signal
 import sys
+
+# Limit ORT (InsightFace + YOLO) and OpenMP threads BEFORE any model is loaded.
+# Default is all cores; with 16 cores both YOLO and InsightFace grab 16 threads
+# each → they contend and BOTH slow down when recognition fires.
+# 6 threads each leaves enough headroom so YOLO keeps its pace while InsightFace
+# runs concurrently in the recognition worker thread.
+for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+             "ORT_NUM_THREADS"):
+    os.environ.setdefault(_var, "6")
 
 from flask import Flask
 

@@ -846,9 +846,27 @@ class MonitoringPipeline:
         """
         if not boxes:
             return {}
+        # Pre-scale to det_size so InsightFace doesn't letterbox a full
+        # 1920×1080 frame internally — saves ~30-50ms on CPU per recognition call.
+        # The embedding quality is unchanged (InsightFace normalises faces to
+        # 112×112 regardless; the 1280-det resolves small far-away faces).
+        fh, fw = frame.shape[:2]
+        det_sz = self.recognizer.det_size
+        if fw > det_sz or fh > det_sz:
+            _scale = det_sz / max(fw, fh)
+            _nw, _nh = max(1, int(fw * _scale)), max(1, int(fh * _scale))
+            _small = cv2.resize(frame, (_nw, _nh), interpolation=cv2.INTER_LINEAR)
+            _sx, _sy = fw / _nw, fh / _nh
+        else:
+            _small = frame
+            _sx = _sy = 1.0
         faces = []
-        for f in self.recognizer.detect_faces(frame):
+        for f in self.recognizer.detect_faces(_small):
             x1, y1, x2, y2 = [int(v) for v in f.bbox]
+            # Scale bbox back to original frame coordinates
+            if _sx != 1.0:
+                x1 = int(x1 * _sx); y1 = int(y1 * _sy)
+                x2 = int(x2 * _sx); y2 = int(y2 * _sy)
             if not self._face_quality_ok(frame, f, (x1, y1, x2, y2)):
                 continue
             faces.append({
