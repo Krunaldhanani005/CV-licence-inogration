@@ -115,6 +115,13 @@ class MonitoringPipeline:
         self._gen_counter = 0             # monotonic identity-epoch counter
         self._new_track_confirmed = False # signals immediate recognition for new tracks
 
+        # JPEG encode thread — imencode (~20ms at 1080p) runs here so the
+        # inference loop is never blocked waiting for compression.
+        self._encode_lock = threading.Lock()
+        self._encode_frame: Optional[np.ndarray] = None  # latest annotated frame
+        self._encode_event = threading.Event()
+        self._encode_thread: Optional[threading.Thread] = None
+
         # Session-based camera selection. No camera is opened until the user picks
         # one from the Live Monitoring dialog. The choice is in-memory only.
         self._has_source = False
@@ -207,6 +214,10 @@ class MonitoringPipeline:
                 target=self._recognition_loop, name="recognition", daemon=True
             )
             self._recog_thread.start()
+        self._encode_thread = threading.Thread(
+            target=self._encode_loop, name="jpeg-encode", daemon=True
+        )
+        self._encode_thread.start()
         logger.info("Pipeline started (idle — detection OFF until user presses Start)")
 
     # --------------------------------------------------- detection start/stop
@@ -302,10 +313,13 @@ class MonitoringPipeline:
     def stop(self) -> None:
         self._running = False
         self._recog_event.set()           # wake the recognition worker to exit
+        self._encode_event.set()          # wake the encode worker to exit
         if self._infer_thread:
             self._infer_thread.join(timeout=3.0)
         if self._recog_thread:
             self._recog_thread.join(timeout=3.0)
+        if self._encode_thread:
+            self._encode_thread.join(timeout=2.0)
         self.cam_manager.stop()
         self._has_source = False
         with self._lock:
@@ -583,7 +597,8 @@ class MonitoringPipeline:
             return
         if self.async_recognition:
             with self._recog_lock:
-                self._recog_req = (frame, boxes, gens)   # latest only — drop older
+                # Copy frame so _draw() can safely modify the original concurrently.
+                self._recog_req = (frame.copy(), boxes, gens)
             self._recog_event.set()
         else:
             # Synchronous fallback (no worker thread).
@@ -1104,9 +1119,14 @@ class MonitoringPipeline:
 
     # --------------------------------------------------------------- drawing
     def _draw(self, frame: np.ndarray) -> np.ndarray:
+        """Annotate frame in-place and return it.
+
+        Caller owns this frame (cam_manager.read() returns stream._frame.copy()).
+        Recognition got its own copy in _submit_recognition(), so drawing here
+        is safe — no separate copy needed.
+        """
         from core.utils import departments as dept
 
-        out = frame.copy()
         # Scale all annotations to the frame size for a clean large-display look.
         scale = max(0.7, frame.shape[1] / 1280.0)
         box_th = max(2, int(round(3 * scale)))
@@ -1123,7 +1143,7 @@ class MonitoringPipeline:
             color = dept.hex_to_bgr(hex_color)
 
             # Full-body bounding box only — never a separate face box.
-            cv2.rectangle(out, (x1, y1), (x2, y2), color, box_th)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), color, box_th)
 
             # Label lines: Name, then Department (known only), then Activity.
             name = state.name or self.recognizer.guest_label
@@ -1132,10 +1152,10 @@ class MonitoringPipeline:
                 lines.append((state.department, 0.6, color))
             if state.activity:
                 lines.append((state.activity, 0.55, (185, 195, 210)))
-            self._draw_labels(out, x1, y1, lines, color, scale)
+            self._draw_labels(frame, x1, y1, lines, color, scale)
         if self.draw_fps:
-            self._draw_hud(out)
-        return out
+            self._draw_hud(frame)
+        return frame
 
     def _draw_labels(self, img, x1, y1, lines, color, scale=1.0) -> None:
         """Render a stacked label box. ``lines`` = list of (text, base_scale, bgr)."""
@@ -1178,12 +1198,35 @@ class MonitoringPipeline:
                     (76, 217, 100), 1, cv2.LINE_AA)
 
     # ----------------------------------------------------------- publishing
+    def _encode_loop(self) -> None:
+        """Compress annotated frames to JPEG on a dedicated thread.
+
+        The inference thread hands off the latest frame here and continues
+        immediately — imencode (~20 ms at 1920×1080) never stalls detection.
+        If a new frame arrives while encoding is in progress, the old pending
+        frame is overwritten so the stream always shows the freshest image.
+        """
+        while self._running:
+            if not self._encode_event.wait(timeout=0.1):
+                continue
+            self._encode_event.clear()
+            with self._encode_lock:
+                frame = self._encode_frame
+                self._encode_frame = None
+            if frame is None:
+                continue
+            ok, buf = cv2.imencode(
+                ".jpg", frame,
+                [int(cv2.IMWRITE_JPEG_QUALITY), self._eff_jpeg()])
+            if ok:
+                with self._lock:
+                    self._output_jpeg = buf.tobytes()
+
     def _publish(self, frame: np.ndarray) -> None:
-        ok, buf = cv2.imencode(".jpg", frame,
-                               [int(cv2.IMWRITE_JPEG_QUALITY), self._eff_jpeg()])
-        if ok:
-            with self._lock:
-                self._output_jpeg = buf.tobytes()
+        """Hand annotated frame to the encode thread — never blocks inference."""
+        with self._encode_lock:
+            self._encode_frame = frame  # overwrite stale frame if encode is busy
+        self._encode_event.set()
 
     def _publish_placeholder(self) -> None:
         """A clean, dark branded frame. The dashboard draws its own HTML overlay
