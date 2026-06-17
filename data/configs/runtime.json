@@ -1,7 +1,7 @@
 {
   "pipeline": {
     "stream_resolution": "1920x1080",
-    "fps_limit": 20,
+    "fps_limit": 15,
     "detect_every_n_frames": 2,
     "pose_every_n_frames": 3,
     "jpeg_quality": 60,
