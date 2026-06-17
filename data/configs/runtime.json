@@ -1,8 +1,8 @@
 {
   "pipeline": {
     "stream_resolution": "1920x1080",
-    "fps_limit": 15,
-    "detect_every_n_frames": 1,
+    "fps_limit": 20,
+    "detect_every_n_frames": 2,
     "pose_every_n_frames": 3,
     "jpeg_quality": 60,
     "max_missed_frames": 10,
@@ -11,11 +11,11 @@
     "activity_smooth_window": 3,
     "box_smooth_alpha": 0.85,
     "async_recognition": true,
-    "cpu_high_threshold": 87
+    "cpu_high_threshold": 95
   },
   "recognition": {
     "threshold": 0.4,
-    "recognition_interval": 6,
+    "recognition_interval": 4,
     "min_face_size": 12,
     "recognize_max_attempts": 1,
     "cache_seconds": 120,
@@ -32,7 +32,7 @@
   "detection": {
     "confidence": 0.35,
     "imgsz": 640,
-    "min_confirm_frames": 2
+    "min_confirm_frames": 1
   },
   "tracking": {
     "track_buffer": 15

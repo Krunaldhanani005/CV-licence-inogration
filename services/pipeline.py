@@ -13,6 +13,7 @@ new id appears, satisfying the "recognise once per person" requirement.
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections import Counter, deque
@@ -164,6 +165,14 @@ class MonitoringPipeline:
         self._adapt_level = 0           # 0 = full quality, up to 2 = max throttle
         self._last_cpu_check = 0.0
         self._cpu_pct = 0.0
+
+        # Runtime config hot-reload: pick up runtime.json edits without restart.
+        self._last_config_check = 0.0
+        try:
+            self._runtime_mtime = os.path.getmtime(
+                os.path.join(settings.base_dir, "data", "configs", "runtime.json"))
+        except OSError:
+            self._runtime_mtime = 0.0
 
         # How long to retain a track's cached identity after it disappears —
         # matched to the ByteTrack buffer so brief occlusions don't drop the name.
@@ -419,7 +428,7 @@ class MonitoringPipeline:
                 self._source_lost = (state == "lost")
                 self._publish_placeholder()
                 self._mark_status(state)
-                time.sleep(0.05)
+                time.sleep(0.01)   # short retry — frame is usually available next tick
                 continue
 
             self._source_lost = False
@@ -448,10 +457,27 @@ class MonitoringPipeline:
 
     # ----------------------------------------------- adaptive low-latency mode
     def _update_adaptive(self) -> None:
-        """Raise/lower the throttle level based on CPU load (checked ~1.5s)."""
+        """Raise/lower the throttle level based on CPU load (checked ~1.5s).
+        Also hot-reloads runtime.json every 30 s so config edits apply live.
+        """
+        now = time.time()
+
+        # Hot-reload runtime.json when the file changes (no restart needed).
+        if now - self._last_config_check >= 30.0:
+            self._last_config_check = now
+            try:
+                mtime = os.path.getmtime(
+                    os.path.join(self.settings.base_dir, "data", "configs", "runtime.json"))
+                if mtime != self._runtime_mtime:
+                    self._runtime_mtime = mtime
+                    self.settings.reload()
+                    self._reload_runtime_params()
+                    logger.info("runtime.json changed — params hot-reloaded")
+            except OSError:
+                pass
+
         if not self.adaptive_enabled:
             return
-        now = time.time()
         if now - self._last_cpu_check < 1.5:
             return
         self._last_cpu_check = now

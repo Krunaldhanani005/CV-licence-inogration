@@ -300,7 +300,7 @@ function setText(id, v) { const el = document.getElementById(id); if (el) el.tex
   loadEnrolled();
   if (currentMode === "od") loadEnabledClassCount();
 })();
-setInterval(refresh, 1200);
+setInterval(refresh, 800);
 setInterval(() => {
   if (currentMode === "fr") loadEnrolled();
   else loadEnabledClassCount();
