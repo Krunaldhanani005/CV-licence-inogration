@@ -68,13 +68,14 @@ def video_feed():
 
     def generate():
         boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+        last_jpeg = None
         while True:
             jpeg = pipeline.get_jpeg()
-            if jpeg is None:
-                time.sleep(0.05)
+            if jpeg is None or jpeg is last_jpeg:
+                time.sleep(0.005)   # wait for next pipeline frame, no CPU spin
                 continue
+            last_jpeg = jpeg
             yield boundary + jpeg + b"\r\n"
-            time.sleep(0.03)  # ~30 fps cap for the browser
 
     return Response(generate(), mimetype="multipart/x-mixed-replace; boundary=frame")
 
