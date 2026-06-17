@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import time
 from typing import Tuple
 
@@ -325,7 +326,6 @@ def people_reenroll(person_id: str):
     if not record:
         return _err("Person not found", 404)
     # Force re-computation: remove cached per-image embeddings so enroll_person reprocesses all
-    import shutil
     emb_dir = os.path.join(svc.recognizer.db.embeddings_dir, person_id)
     shutil.rmtree(emb_dir, ignore_errors=True)
     used, total = svc.recognizer.enroll_person(person_id)
@@ -338,7 +338,6 @@ def people_reenroll(person_id: str):
 @api_bp.route("/people/reenroll-all", methods=["POST"])
 def people_reenroll_all():
     svc = _people()
-    import shutil
     results = []
     for person in svc.list_people():
         pid = person["id"]

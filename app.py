@@ -86,8 +86,8 @@ def main() -> None:
     host = settings.get("app", "host", "0.0.0.0")
     port = int(settings.get("app", "port", 5000))
     app.run(
-        host="0.0.0.0",
-        port=5000,
+        host=host,
+        port=port,
         debug=False,
         threaded=True,
     )

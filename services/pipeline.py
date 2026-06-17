@@ -54,7 +54,6 @@ class TrackState:
     force_reverify: bool = False      # set on abrupt box change (possible track swap)
     appearance: Optional[np.ndarray] = None   # body colour histogram (swap detection)
     appearance_mismatch: int = 0      # consecutive frames the body looks different
-    attempts: int = 0
     pending_match: Optional[dict] = None         # candidate identity not yet confirmed
     pending_emb: Optional[np.ndarray] = None     # embedding for pending candidate
     pending_confirm: int = 0                     # consecutive rounds agreeing on pending
@@ -153,9 +152,6 @@ class MonitoringPipeline:
         self.recognition_interval = max(1, int(
             settings.get("recognition", "recognition_interval", 12)
         ))
-        self.recognition_cache_seconds = float(
-            settings.get("recognition", "cache_seconds", 60)
-        )
         self.revalidation_interval = max(1, int(
             settings.get("recognition", "revalidation_interval", 45)))
         self.max_validation_fails = max(1, int(
@@ -184,10 +180,6 @@ class MonitoringPipeline:
         except OSError:
             self._runtime_mtime = 0.0
 
-        # How long to retain a track's cached identity after it disappears —
-        # matched to the ByteTrack buffer so brief occlusions don't drop the name.
-        track_buffer = int(settings.get("tracking", "track_buffer", 60))
-        self._track_ttl = max(2.0, track_buffer / float(self.fps_limit))
 
     @staticmethod
     def _parse_res(value: str) -> Tuple[int, int]:
@@ -371,7 +363,6 @@ class MonitoringPipeline:
         self.cpu_low = float(pcfg.get("cpu_low_threshold", 60))
         self.recognition_interval = max(1, int(rcfg.get("recognition_interval", 12)))
         self.recog_max_attempts = int(rcfg.get("recognize_max_attempts", 3))
-        self.recognition_cache_seconds = float(rcfg.get("cache_seconds", 60))
         self.recognizer.min_face_size = int(rcfg.get("min_face_size", 28))
         self.revalidation_interval = max(1, int(rcfg.get("revalidation_interval", 45)))
         self.max_validation_fails = max(1, int(rcfg.get("max_validation_fails", 3)))
@@ -379,7 +370,6 @@ class MonitoringPipeline:
         self.appearance_corr_threshold = float(rcfg.get("appearance_corr_threshold", 0.40))
         self.appearance_mismatch_frames = max(1, int(rcfg.get("appearance_mismatch_frames", 4)))
         self.debug_recognition = bool(rcfg.get("debug", False))
-        self._track_ttl = max(2.0, int(tcfg.get("track_buffer", 60)) / float(self.fps_limit))
 
         # Push live tunables onto the already-loaded models (no reload needed).
         imgsz = int(dcfg.get("imgsz", 640))
@@ -1119,22 +1109,6 @@ class MonitoringPipeline:
         self._gen_counter += 1
         return self._gen_counter
 
-    def _downgrade_to_guest(self, state: TrackState) -> None:
-        if self.debug_recognition:
-            logger.info("[ID] track id=%d DOWNGRADED %s -> Guest (failed re-validation)",
-                        state.track_id, state.name)
-        state.name = self.recognizer.guest_label
-        state.department = ""
-        state.color = ""
-        state.color_bgr = None
-        state.is_known = False
-        state.recognized = False
-        state.identity_emb = None
-        state.verify_fail = 0
-        state.pending_match = None
-        state.pending_emb = None
-        state.pending_confirm = 0
-
     def _motion_to_activity(self, motion: float) -> str:
         """Map normalised centroid speed to Walking / Standing / Idle."""
         if motion >= self.walk_thresh:
@@ -1377,7 +1351,7 @@ class MonitoringPipeline:
                 st.name = self.recognizer.guest_label
                 st.department = ""
                 st.color = ""
+                st.color_bgr = None
                 st.identity_emb = None
                 st.verify_fail = 0
-                st.attempts = 0
         logger.info("Recognition index reloaded; tracks reset for re-recognition")
