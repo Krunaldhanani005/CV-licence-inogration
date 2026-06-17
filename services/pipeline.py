@@ -30,6 +30,7 @@ from core.pose import PoseEstimator
 from core.recognition import FaceRecognizer
 from core.tracking import PersonTracker
 from core.utils import clamp_box, get_logger, iou
+from core.utils import departments as _dept
 
 logger = get_logger(__name__)
 
@@ -42,6 +43,7 @@ class TrackState:
     name: str = "Guest"
     department: str = ""
     color: str = ""                   # hex department colour (or guest colour)
+    color_bgr: Optional[Tuple[int, int, int]] = None  # cached BGR for draw — avoids hex parse every frame
     is_known: bool = False
     score: float = 0.0
     recognized: bool = False          # a name is currently bound to this track
@@ -114,6 +116,7 @@ class MonitoringPipeline:
         self._recog_out = None            # {tid: (match, emb, gen)}  latest results
         self._gen_counter = 0             # monotonic identity-epoch counter
         self._new_track_confirmed = False # signals immediate recognition for new tracks
+        self._force_recog_due_at: int = -1  # frame index to fire delayed force recognition
 
         # JPEG encode thread — imencode (~20ms at 1080p) runs here so the
         # inference loop is never blocked waiting for compression.
@@ -537,10 +540,18 @@ class MonitoringPipeline:
         if run_detect:
             detections = self.tracker.update(frame)
             self._sync_tracks(detections, frame, width, height)
-            # Submit recognition on the regular interval OR immediately when a
-            # new track just confirmed — skips the full interval wait so a new
-            # person's face is checked within one detection cycle.
-            force_recog, self._new_track_confirmed = self._new_track_confirmed, False
+            # When a new track confirms, schedule forced recognition 4 frames later
+            # instead of firing immediately.  Firing on the same frame as YOLO puts
+            # both ORT sessions (YOLO + InsightFace) on the CPU at once — the 4-frame
+            # gap lets the detection cycle finish before InsightFace starts, eliminating
+            # the visible stutter on person entry.
+            if self._new_track_confirmed:
+                self._new_track_confirmed = False
+                self._force_recog_due_at = self._frame_idx + 4
+            force_recog = (self._force_recog_due_at >= 0
+                           and self._frame_idx >= self._force_recog_due_at)
+            if force_recog:
+                self._force_recog_due_at = -1
             if self._frame_idx % self._eff_recognition_interval() == 0 or force_recog:
                 self._submit_recognition(frame, force=force_recog)
         else:
@@ -559,7 +570,8 @@ class MonitoringPipeline:
 
         annotated = self._draw(frame)
         self._publish(annotated)
-        self._update_stats()
+        if self._frame_idx % 5 == 0:
+            self._update_stats()
 
     def _resolve_duplicate_identities(self) -> None:
         """Guarantee a name is on at most ONE active track.
@@ -1058,6 +1070,7 @@ class MonitoringPipeline:
         state.name = match["name"]
         state.department = match["department"]
         state.color = match["color"]
+        state.color_bgr = _dept.hex_to_bgr(match["color"])   # cache — avoids per-frame hex parse
         state.is_known = True
         state.score = match["score"]
         state.recognized = True
@@ -1089,6 +1102,7 @@ class MonitoringPipeline:
         state.name = self.recognizer.guest_label
         state.department = ""
         state.color = ""
+        state.color_bgr = None
         state.is_known = False
         state.recognized = False
         state.identity_emb = None
@@ -1112,6 +1126,7 @@ class MonitoringPipeline:
         state.name = self.recognizer.guest_label
         state.department = ""
         state.color = ""
+        state.color_bgr = None
         state.is_known = False
         state.recognized = False
         state.identity_emb = None
@@ -1150,9 +1165,17 @@ class MonitoringPipeline:
         if run_pose:
             x1, y1, x2, y2 = box
             crop = frame[max(0, y1):y2, max(0, x1):x2]
-            label = (self.pose.estimate(crop, motion)
-                     if crop.size > 0
-                     else self._motion_to_activity(motion))
+            if crop.size > 0:
+                # Pre-resize to 256px max side — MediaPipe resizes internally to the
+                # same size anyway; skipping its internal resize saves ~5-10ms per call.
+                ch, cw = crop.shape[:2]
+                if cw > 256 or ch > 256:
+                    _ps = 256.0 / max(cw, ch)
+                    crop = cv2.resize(crop, (max(1, int(cw * _ps)), max(1, int(ch * _ps))),
+                                      interpolation=cv2.INTER_LINEAR)
+                label = self.pose.estimate(crop, motion)
+            else:
+                label = self._motion_to_activity(motion)
         else:
             label = self._motion_to_activity(motion)
         state.activity_history.append(label)
@@ -1197,8 +1220,6 @@ class MonitoringPipeline:
         Recognition got its own copy in _submit_recognition(), so drawing here
         is safe — no separate copy needed.
         """
-        from core.utils import departments as dept
-
         # Scale all annotations to the frame size for a clean large-display look.
         scale = max(0.7, frame.shape[1] / 1280.0)
         box_th = max(2, int(round(3 * scale)))
@@ -1210,9 +1231,13 @@ class MonitoringPipeline:
             x1, y1, x2, y2 = (int(round(v)) for v in draw)
             if x2 <= x1 or y2 <= y1:
                 continue
-            # Department colour for known people; neutral colour for guests.
-            hex_color = state.color or (dept.GUEST_COLOR if not state.is_known else "#22C55E")
-            color = dept.hex_to_bgr(hex_color)
+            # Use cached BGR — computed once at bind time, not every frame.
+            if state.color_bgr is not None:
+                color = state.color_bgr
+            elif state.is_known:
+                color = (78, 197, 34)          # #22C55E in BGR
+            else:
+                color = _dept.hex_to_bgr(_dept.GUEST_COLOR)
 
             # Full-body bounding box only — never a separate face box.
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, box_th)
