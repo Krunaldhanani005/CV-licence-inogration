@@ -116,6 +116,7 @@ class MonitoringPipeline:
         self._gen_counter = 0             # monotonic identity-epoch counter
         self._new_track_confirmed = False # signals immediate recognition for new tracks
         self._force_recog_due_at: int = -1  # frame index to fire delayed force recognition
+        self._recog_busy: bool = False    # True while _recognize_faces() is running on worker
 
         # JPEG encode thread — imencode (~20ms at 1080p) runs here so the
         # inference loop is never blocked waiting for compression.
@@ -501,7 +502,14 @@ class MonitoringPipeline:
             logger.info("CPU %.0f%% normal -> low-latency level %d", self._cpu_pct, self._adapt_level)
 
     def _eff_detect_every(self) -> int:
-        return self.detect_every_n + self._adapt_level
+        base = self.detect_every_n + self._adapt_level
+        # With 5+ people who are ALL recognized the scene is stable — run YOLO
+        # one frame less often so the CPU has headroom for smooth annotation.
+        # Resets instantly when anyone becomes unrecognized (new arrival, reverify).
+        confirmed = [s for s in self._tracks.values() if s.confirmed]
+        if len(confirmed) >= 5 and all(s.recognized for s in confirmed):
+            return base + 1
+        return base
 
     def _eff_pose_every(self) -> int:
         # Reduce posture updates before touching stream/tracking (per spec).
@@ -615,6 +623,11 @@ class MonitoringPipeline:
             if not any_due:
                 return
         if self.async_recognition:
+            # Skip if InsightFace is already running — avoids back-to-back ORT
+            # loads that saturate the CPU and stutter the stream.  Force calls
+            # (new arrivals) still go through so they are never silently delayed.
+            if self._recog_busy and not force:
+                return
             with self._recog_lock:
                 # Copy frame so _draw() can safely modify the original concurrently.
                 self._recog_req = (frame.copy(), boxes, gens)
@@ -652,11 +665,14 @@ class MonitoringPipeline:
             if req is None:
                 continue
             frame, boxes, gens = req
+            self._recog_busy = True
             try:
                 out = self._recognize_faces(frame, boxes, gens)
             except Exception as exc:  # noqa: BLE001 - worker must survive
                 logger.exception("Recognition worker error: %s", exc)
+                self._recog_busy = False
                 continue
+            self._recog_busy = False
             with self._recog_lock:
                 self._recog_out = out
 
@@ -1134,7 +1150,19 @@ class MonitoringPipeline:
         # With pose_every_n=3 and 3 people: person 0 updates on frames 0,3,6…
         # person 1 on frames 1,4,7… person 2 on frames 2,5,8… — MediaPipe
         # calls are spread evenly instead of spiking on the same frame.
-        run_pose = ((self._frame_idx + state.track_id) % self._eff_pose_every() == 0
+        #
+        # Motion-aware interval: people who are standing still don't need frequent
+        # Sitting/Bending checks — Walking/Idle can be derived from motion speed
+        # alone (no MediaPipe needed).  This cuts MediaPipe calls for 5 stable
+        # people from ~1.7/frame to ~0.5/frame, saving ~18ms per detection frame.
+        _base_pose_iv = self._eff_pose_every()
+        if motion >= self.walk_thresh:
+            _pose_iv = _base_pose_iv            # walking → full rate
+        elif motion > self.idle_thresh:
+            _pose_iv = _base_pose_iv * 2        # slow/standing → half rate
+        else:
+            _pose_iv = _base_pose_iv * 3        # idle → check 1/3 as often
+        run_pose = ((self._frame_idx + state.track_id) % _pose_iv == 0
                     and self.pose.enabled)
         if run_pose:
             x1, y1, x2, y2 = box
