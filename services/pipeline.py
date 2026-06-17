@@ -761,7 +761,9 @@ class MonitoringPipeline:
             # persistently change is a DIFFERENT person now — this catches a smooth
             # ByteTrack swap when two people cross/pass (no gap, no box jump, and
             # back-facing so the face can't help). -> invalidate -> re-verify.
-            if state.recognized:
+            # Throttled to every 4 frames — saves 2-3ms/person on detection frames
+            # while still catching a clothing swap within ~4 detection frames (~0.5s).
+            if state.recognized and self._frame_idx % 4 == 0:
                 self._check_appearance(state, frame, box)
 
         # Tracks not seen this update accumulate "missed" frames; _cleanup_tracks()

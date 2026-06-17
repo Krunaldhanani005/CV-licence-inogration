@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 from typing import List, Set
 
+import cv2
 import numpy as np
 
 from config import Settings
@@ -44,8 +45,21 @@ class PersonTracker:
     # ------------------------------------------------------------------ track
     def update(self, frame: np.ndarray) -> List[Detection]:
         """Run tracking on a frame and return tracked person detections."""
+        h, w = frame.shape[:2]
+        # Pre-resize to imgsz so YOLO doesn't letterbox a full 1920×1080 frame
+        # internally — saves ~10-20ms per detection on CPU.  Boxes are scaled
+        # back to the original frame's coordinate space afterwards.
+        if w > self.imgsz or h > self.imgsz:
+            scale = self.imgsz / max(w, h)
+            nw, nh = max(1, int(w * scale)), max(1, int(h * scale))
+            small = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_LINEAR)
+            sx, sy = w / nw, h / nh
+        else:
+            small = frame
+            sx = sy = 1.0
+
         results = self.detector.model.track(
-            frame,
+            small,
             imgsz=self.imgsz,
             conf=self.confidence,
             iou=self.iou,
@@ -58,6 +72,11 @@ class PersonTracker:
         detections = PersonDetector._parse(results)
         # Keep only detections that ByteTrack actually assigned an id to.
         detections = [d for d in detections if d.track_id is not None]
+        # Scale boxes from the downsampled frame back to original coordinates.
+        if sx != 1.0 or sy != 1.0:
+            for d in detections:
+                x1, y1, x2, y2 = d.box
+                d.box = (int(x1 * sx), int(y1 * sy), int(x2 * sx), int(y2 * sy))
         self._active_ids = {d.track_id for d in detections}
         return detections
 
