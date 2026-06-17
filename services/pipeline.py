@@ -529,6 +529,10 @@ class MonitoringPipeline:
             force_recog, self._new_track_confirmed = self._new_track_confirmed, False
             if self._frame_idx % self._eff_recognition_interval() == 0 or force_recog:
                 self._submit_recognition(frame)
+        else:
+            # On skip frames, extrapolate each box by its last known velocity so
+            # boxes glide smoothly with moving people instead of freezing in place.
+            self._extrapolate_boxes(width, height)
 
         # Apply any recognition results produced by the worker thread.
         self._apply_recognition_results()
@@ -1066,6 +1070,27 @@ class MonitoringPipeline:
             label = self._motion_to_activity(motion)
         state.activity_history.append(label)
         state.activity = Counter(state.activity_history).most_common(1)[0][0]
+
+    def _extrapolate_boxes(self, width: int, height: int) -> None:
+        """Shift draw_box by last known velocity on YOLO-skip frames so boxes
+        glide with moving people instead of freezing between detections."""
+        for state in self._tracks.values():
+            if not state.confirmed or state.draw_box is None:
+                continue
+            if len(state.centers) < 2:
+                continue
+            pts = list(state.centers)
+            dx = pts[-1][0] - pts[-2][0]
+            dy = pts[-1][1] - pts[-2][1]
+            if abs(dx) < 0.5 and abs(dy) < 0.5:
+                continue  # stationary — skip to avoid drift
+            x1, y1, x2, y2 = state.draw_box
+            state.draw_box = (
+                max(0.0, min(float(width),  x1 + dx)),
+                max(0.0, min(float(height), y1 + dy)),
+                max(0.0, min(float(width),  x2 + dx)),
+                max(0.0, min(float(height), y2 + dy)),
+            )
 
     @staticmethod
     def _motion_speed(centers: Deque[Tuple[float, float]], box_h: float) -> float:
