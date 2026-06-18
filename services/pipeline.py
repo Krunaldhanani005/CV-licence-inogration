@@ -58,6 +58,7 @@ class TrackState:
     pending_emb: Optional[np.ndarray] = None     # embedding for pending candidate
     pending_confirm: int = 0                     # consecutive rounds agreeing on pending
     activity: str = "Standing"
+    motion: float = 0.0               # current normalised centroid speed (crowd pose priority)
     box: Tuple[int, int, int, int] = (0, 0, 0, 0)
     draw_box: Optional[Tuple[float, float, float, float]] = None  # smoothed (EMA) box
     hits: int = 0                     # consecutive detections (for confirmation)
@@ -67,6 +68,10 @@ class TrackState:
     last_seen: float = 0.0
     last_seen_frame: int = 0          # global frame index of last detection
     gen: int = 0                      # identity-epoch token (bumped on reuse/invalidate)
+    # Label render cache — avoids cv2.getTextSize on every frame when text is unchanged.
+    lbl_key: Optional[Tuple] = None
+    lbl_sizes: Optional[list] = None
+    lbl_dims: Optional[Tuple[int, int]] = None
 
 
 class MonitoringPipeline:
@@ -117,6 +122,7 @@ class MonitoringPipeline:
         self._new_track_confirmed = False # signals immediate recognition for new tracks
         self._force_recog_due_at: int = -1  # frame index to fire delayed force recognition
         self._recog_busy: bool = False    # True while _recognize_faces() is running on worker
+        self._pose_allowed: Optional[set] = None  # tids allowed pose this detection cycle
 
         # JPEG encode thread — imencode (~20ms at 1080p) runs here so the
         # inference loop is never blocked waiting for compression.
@@ -501,19 +507,25 @@ class MonitoringPipeline:
             self._adapt_level -= 1
             logger.info("CPU %.0f%% normal -> low-latency level %d", self._cpu_pct, self._adapt_level)
 
+    def _in_crowd_mode(self) -> bool:
+        """True when 6+ confirmed tracks are visible (8-10 person scenario)."""
+        return sum(1 for s in self._tracks.values() if s.confirmed) >= 6
+
     def _eff_detect_every(self) -> int:
         base = self.detect_every_n + self._adapt_level
-        # With 5+ people who are ALL recognized the scene is stable — run YOLO
-        # one frame less often so the CPU has headroom for smooth annotation.
-        # Resets instantly when anyone becomes unrecognized (new arrival, reverify).
+        if self._in_crowd_mode():
+            return max(base, 3)   # crowd: YOLO every 3rd frame — frees ~15ms/frame
+        # With 5+ people all recognized the scene is stable — run YOLO slightly less.
         confirmed = [s for s in self._tracks.values() if s.confirmed]
         if len(confirmed) >= 5 and all(s.recognized for s in confirmed):
             return base + 1
         return base
 
     def _eff_pose_every(self) -> int:
-        # Reduce posture updates before touching stream/tracking (per spec).
-        return self.pose_every_n + self._adapt_level * 4
+        base = self.pose_every_n + self._adapt_level * 4
+        if self._in_crowd_mode():
+            return max(base, 6)   # crowd: halve pose rate before motion-aware scaling
+        return base
 
     def _eff_jpeg(self) -> int:
         return max(50, self.jpeg_quality - self._adapt_level * 10)
@@ -525,11 +537,44 @@ class MonitoringPipeline:
         many people keeps the recognition worker (and CPU) comfortable.
         """
         n = sum(1 for s in self._tracks.values() if s.confirmed)
-        if n >= 7:
+        if n >= 6:   # crowd mode threshold — matches _in_crowd_mode()
             return self.recognition_interval * 2
         if n >= 4:
             return int(self.recognition_interval * 1.5)
         return self.recognition_interval
+
+    def _recalc_pose_allowed(self) -> None:
+        """Pick at most 3 tracks for MediaPipe pose this detection cycle.
+
+        Priority (crowd mode applies hard cap; otherwise all due tracks run):
+          1. Moving people  (motion >= walk_thresh)  — activity changes matter most
+          2. Recognized     (is_known)               — want fresh posture for display
+          3. Lowest track_id                          — deterministic round-robin
+
+        Tracks whose motion-aware interval says they're not due are excluded first.
+        """
+        base_iv = self._eff_pose_every()
+        candidates = []
+        for st in self._tracks.values():
+            if not st.confirmed:
+                continue
+            # Per-track motion-aware interval (same formula used previously).
+            if st.motion >= self.walk_thresh:
+                pose_iv = base_iv
+            elif st.motion > self.idle_thresh:
+                pose_iv = base_iv * 2
+            else:
+                pose_iv = base_iv * 3
+            if (self._frame_idx + st.track_id) % pose_iv != 0:
+                continue  # not due this cycle
+            priority = (
+                0 if st.motion >= self.walk_thresh else 1,
+                0 if st.is_known else 1,
+                st.track_id,
+            )
+            candidates.append((priority, st.track_id))
+        candidates.sort()
+        self._pose_allowed = {tid for _, tid in candidates[:3]}
 
     def _process_frame(self, frame: np.ndarray) -> None:
         height, width = frame.shape[:2]
@@ -538,6 +583,8 @@ class MonitoringPipeline:
         if run_detect:
             detections = self.tracker.update(frame)
             self._sync_tracks(detections, frame, width, height)
+            # Build this cycle's pose-allowed set AFTER sync (motion is now fresh).
+            self._recalc_pose_allowed()
             # When a new track confirms, schedule forced recognition 4 frames later
             # instead of firing immediately.  Firing on the same frame as YOLO puts
             # both ORT sessions (YOLO + InsightFace) on the CPU at once — the 4-frame
@@ -556,6 +603,7 @@ class MonitoringPipeline:
             # On skip frames, extrapolate each box by its last known velocity so
             # boxes glide smoothly with moving people instead of freezing in place.
             self._extrapolate_boxes(width, height)
+            self._pose_allowed = set()  # no pose on skip frames
 
         # Apply any recognition results produced by the worker thread.
         self._apply_recognition_results()
@@ -770,6 +818,7 @@ class MonitoringPipeline:
             box_h = max(1.0, box[3] - box[1])
             state.centers.append((cx, cy))
             motion = self._motion_speed(state.centers, box_h)
+            state.motion = motion   # stored so _recalc_pose_allowed() can use it
 
             # Activity: pose every pose_every_n frames for Sitting/Bending;
             # motion-only on all other frames for instant Walking/Idle.
@@ -1008,7 +1057,11 @@ class MonitoringPipeline:
         # Already named -> identity PERSISTS with the track. Re-validate only when
         # due (interval) or forced (abrupt box change). Crucially, a weak/hidden/
         # angled face never downgrades to Guest — tracking alone maintains identity.
-        due = (self._frame_idx - state.last_verified_frame >= self.revalidation_interval) \
+        # In crowd mode, double the interval so stable recognized tracks are left
+        # alone for ~8-10 s — reduces recognition CPU spikes with 8-10 people.
+        rev_iv = (self.revalidation_interval * 2 if self._in_crowd_mode()
+                  else self.revalidation_interval)
+        due = (self._frame_idx - state.last_verified_frame >= rev_iv) \
             or state.force_reverify
         if not due:
             return
@@ -1146,24 +1199,14 @@ class MonitoringPipeline:
         Smoothing window is 3 so labels change within 2 frames of an actual
         posture transition while still suppressing single-frame flicker.
         """
-        # Stagger pose across people using track_id as a frame offset.
-        # With pose_every_n=3 and 3 people: person 0 updates on frames 0,3,6…
-        # person 1 on frames 1,4,7… person 2 on frames 2,5,8… — MediaPipe
-        # calls are spread evenly instead of spiking on the same frame.
-        #
-        # Motion-aware interval: people who are standing still don't need frequent
-        # Sitting/Bending checks — Walking/Idle can be derived from motion speed
-        # alone (no MediaPipe needed).  This cuts MediaPipe calls for 5 stable
-        # people from ~1.7/frame to ~0.5/frame, saving ~18ms per detection frame.
-        _base_pose_iv = self._eff_pose_every()
-        if motion >= self.walk_thresh:
-            _pose_iv = _base_pose_iv            # walking → full rate
-        elif motion > self.idle_thresh:
-            _pose_iv = _base_pose_iv * 2        # slow/standing → half rate
-        else:
-            _pose_iv = _base_pose_iv * 3        # idle → check 1/3 as often
-        run_pose = ((self._frame_idx + state.track_id) % _pose_iv == 0
-                    and self.pose.enabled)
+        # Pose eligibility is pre-computed by _recalc_pose_allowed() each detection
+        # cycle: max 3 tracks run MediaPipe per cycle, prioritised by motion then
+        # recognition status.  Skip frames set _pose_allowed = {} so no pose runs.
+        run_pose = (
+            self.pose.enabled
+            and self._pose_allowed is not None
+            and state.track_id in self._pose_allowed
+        )
         if run_pose:
             x1, y1, x2, y2 = box
             crop = frame[max(0, y1):y2, max(0, x1):x2]
@@ -1251,23 +1294,42 @@ class MonitoringPipeline:
                 lines.append((state.department, 0.6, color))
             if state.activity:
                 lines.append((state.activity, 0.55, (185, 195, 210)))
-            self._draw_labels(frame, x1, y1, lines, color, scale)
+            self._draw_labels(frame, x1, y1, lines, color, scale, state)
         if self.draw_fps:
             self._draw_hud(frame)
         return frame
 
-    def _draw_labels(self, img, x1, y1, lines, color, scale=1.0) -> None:
-        """Render a stacked label box. ``lines`` = list of (text, base_scale, bgr)."""
+    def _draw_labels(self, img, x1, y1, lines, color, scale=1.0,
+                     state: Optional["TrackState"] = None) -> None:
+        """Render a stacked label box. ``lines`` = list of (text, base_scale, bgr).
+
+        ``state`` is optional: when provided, text sizes are cached on the
+        TrackState and only recomputed when name/dept/activity changes — this
+        avoids repeated cv2.getTextSize calls (especially with 8-10 people).
+        """
         font = cv2.FONT_HERSHEY_SIMPLEX
         pad = int(14 * scale)
         gap = int(8 * scale)
-        sizes = []
-        for text, bscale, _ in lines:
-            th = max(1, int(round((2 if bscale >= 0.8 else 1.4) * scale)))
-            (w, h), _ = cv2.getTextSize(text, font, bscale * scale, th)
-            sizes.append((w, h, th))
-        box_w = max(w for w, _, _ in sizes) + pad * 2
-        box_h = sum(h for _, h, _ in sizes) + gap * (len(lines) - 1) + pad * 2
+
+        # Cache key: tuple of texts; scale is constant for a fixed resolution.
+        lbl_key = tuple(text for text, _, _ in lines)
+        if (state is not None
+                and state.lbl_key == lbl_key
+                and state.lbl_sizes is not None):
+            sizes = state.lbl_sizes
+            box_w, box_h = state.lbl_dims
+        else:
+            sizes = []
+            for text, bscale, _ in lines:
+                th = max(1, int(round((2 if bscale >= 0.8 else 1.4) * scale)))
+                (w, h), _ = cv2.getTextSize(text, font, bscale * scale, th)
+                sizes.append((w, h, th))
+            box_w = max(w for w, _, _ in sizes) + pad * 2
+            box_h = sum(h for _, h, _ in sizes) + gap * (len(lines) - 1) + pad * 2
+            if state is not None:
+                state.lbl_key = lbl_key
+                state.lbl_sizes = sizes
+                state.lbl_dims = (box_w, box_h)
         top = max(0, y1 - box_h)
         accent = max(4, int(6 * scale))
 
